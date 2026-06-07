@@ -1,0 +1,284 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.page {
+  width: min(960px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.hero {
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: #6366f1;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 42rem;
+  color: #64748b;
+  font-size: 1.05rem;
+}
+
+.search-card,
+.state-card,
+.result-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.search-card {
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.search-label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+}
+
+input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  font: inherit;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+input:focus {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+  border-color: #6366f1;
+  background: #ffffff;
+}
+
+button {
+  min-width: 7rem;
+  padding: 0.875rem 1.25rem;
+  border: none;
+  border-radius: 0.75rem;
+  font: inherit;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.state-card {
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.state-card.loading {
+  display: grid;
+  place-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.state-card.error {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.state-card.error h2,
+.state-card.error p {
+  margin: 0;
+}
+
+.state-card.error h2 {
+  margin-bottom: 0.5rem;
+  color: #be123c;
+}
+
+.result-card {
+  padding: 1.5rem;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.connection-badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.connection-badge.connecting {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.connection-badge.live {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.connection-badge.disconnected {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.connection-badge.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.stream-error {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  color: #991b1b;
+  background: #fff1f2;
+}
+
+.stream-hint {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  color: #1e40af;
+  background: #eff6ff;
+  font-size: 0.9375rem;
+}
+
+.metric.highlight {
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+}
+
+.symbol {
+  margin: 0 0 0.35rem;
+  color: #6366f1;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.result-header h2 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.badge.positive {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.badge.negative {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.metric {
+  padding: 1rem;
+  border-radius: 0.875rem;
+  background: #f8fafc;
+}
+
+.metric-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #64748b;
+  font-size: 0.8125rem;
+}
+
+.metric-value {
+  font-size: 1.25rem;
+}
+
+.metric-value.price {
+  font-size: 1.75rem;
+}
+
+.positive {
+  color: #15803d;
+}
+
+.negative {
+  color: #b91c1c;
+}
+
+@media (max-width: 640px) {
+  .search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .result-header {
+    flex-direction: column;
+  }
+}

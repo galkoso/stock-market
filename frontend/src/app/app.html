@@ -1,0 +1,132 @@
+<main class="page">
+  <section class="hero">
+    <p class="eyebrow">Stock Market Search</p>
+    <h1>Find live stock prices</h1>
+    <p class="subtitle">Search by company name or ticker — for example Apple, AAPL, Tesla, or TSLA.</p>
+  </section>
+
+  <form class="search-card" (submit)="onSearch($event)">
+    <label class="search-label" for="stock-search">Search stocks</label>
+    <div class="search-row">
+      <input
+        id="stock-search"
+        type="search"
+        name="q"
+        placeholder="Apple or AAPL"
+        autocomplete="off"
+        [disabled]="isLoading()"
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+        (keydown.enter)="onSearch($event)"
+      />
+      <button type="submit" [disabled]="isLoading()">
+        @if (isLoading()) {
+          Searching...
+        } @else {
+          Search
+        }
+      </button>
+    </div>
+  </form>
+
+  @if (isLoading()) {
+    <section class="state-card loading" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Fetching the latest quote...</p>
+    </section>
+  }
+
+  @if (hasError()) {
+    <section class="state-card error" aria-live="assertive">
+      <h2>Unable to load stock</h2>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  }
+
+  @if (hasResult(); as _) {
+    @if (stock(); as quote) {
+      <section class="result-card" aria-live="polite">
+        <div class="result-header">
+          <div>
+            <p class="symbol">{{ quote.symbol }}</p>
+            <h2>{{ quote.companyName }}</h2>
+          </div>
+          <div class="header-badges">
+            <span
+              class="connection-badge"
+              [class.connecting]="streamStatus() === 'connecting'"
+              [class.live]="streamStatus() === 'live'"
+              [class.disconnected]="streamStatus() === 'disconnected'"
+              [class.error]="streamStatus() === 'error'"
+            >
+              {{ streamStatusLabel() }}
+            </span>
+            <span class="badge" [class.positive]="isPositiveChange()" [class.negative]="!isPositiveChange()">
+              {{ isPositiveChange() ? 'Up today' : 'Down today' }}
+            </span>
+          </div>
+        </div>
+
+        @if (streamError()) {
+          <p class="stream-error">{{ streamError() }}</p>
+        } @else if (streamHint()) {
+          <p class="stream-hint">{{ streamHint() }}</p>
+        }
+
+        <div class="price-grid">
+          <article class="metric highlight">
+            <span class="metric-label">
+              @if (livePrice()) {
+                Live price
+              } @else if (streamStatus() === 'live') {
+                Last REST price
+              } @else {
+                Current price
+              }
+            </span>
+            @if (displayPrice(); as price) {
+              <strong class="metric-value price">${{ price | number: '1.2-2' }}</strong>
+            }
+          </article>
+
+          <article class="metric">
+            <span class="metric-label">Daily change</span>
+            <strong
+              class="metric-value"
+              [class.positive]="isPositiveChange()"
+              [class.negative]="!isPositiveChange()"
+            >
+              {{ quote.dailyChange >= 0 ? '+' : '' }}{{ quote.dailyChange | number: '1.2-2' }}
+            </strong>
+          </article>
+
+          <article class="metric">
+            <span class="metric-label">Daily change %</span>
+            <strong
+              class="metric-value"
+              [class.positive]="isPositiveChange()"
+              [class.negative]="!isPositiveChange()"
+            >
+              {{ quote.dailyChangePercent >= 0 ? '+' : '' }}{{ quote.dailyChangePercent | number: '1.2-2' }}%
+            </strong>
+          </article>
+
+          <article class="metric">
+            <span class="metric-label">Last updated</span>
+            <strong class="metric-value">
+              @if (lastTradeAt(); as tradeTime) {
+                {{ tradeTime | date: 'medium' }}
+              } @else {
+                {{ quote.lastUpdated | date: 'medium' }}
+              }
+            </strong>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Live trades received</span>
+            <strong class="metric-value">{{ tradeCount() }}</strong>
+          </article>
+        </div>
+      </section>
+    }
+  }
+</main>
