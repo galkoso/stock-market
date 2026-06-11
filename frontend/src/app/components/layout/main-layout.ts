@@ -16,24 +16,17 @@ export class MainLayout implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly notificationsService = inject(NotificationsService);
 
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-
   protected readonly currentUser = this.authService.currentUser;
   protected readonly notifications = this.notificationsService.notifications;
   protected readonly unreadCount = this.notificationsService.unreadCount;
   protected readonly notificationsOpen = signal(false);
 
   ngOnInit(): void {
-    void this.refreshNotifications();
-    this.pollTimer = setInterval(() => {
-      void this.refreshNotifications();
-    }, 30_000);
+    void this.bootstrapNotifications();
   }
 
   ngOnDestroy(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-    }
+    this.notificationsService.disconnect();
   }
 
   @HostListener('document:click')
@@ -69,15 +62,25 @@ export class MainLayout implements OnInit, OnDestroy {
   }
 
   protected async logout(): Promise<void> {
+    this.notificationsService.disconnect();
     await this.authService.logout();
     await this.router.navigate(['/login']);
+  }
+
+  private async bootstrapNotifications(): Promise<void> {
+    try {
+      await this.notificationsService.load();
+      this.notificationsService.connect();
+    } catch {
+      // Ignore initial load errors — SSE will reconnect when backend is available.
+    }
   }
 
   private async refreshNotifications(): Promise<void> {
     try {
       await this.notificationsService.load();
     } catch {
-      // Ignore polling errors — user may be offline briefly.
+      // Ignore refresh errors when opening the dropdown.
     }
   }
 }

@@ -13,6 +13,7 @@ import (
 	"stock-market/backend/internal/handler"
 	"stock-market/backend/internal/middleware"
 	mongopkg "stock-market/backend/internal/mongo"
+	notificationshub "stock-market/backend/internal/notifications"
 	finnhubprovider "stock-market/backend/internal/provider/finnhub"
 	"stock-market/backend/internal/repositories"
 	"stock-market/backend/internal/scheduler"
@@ -76,12 +77,13 @@ func main() {
 	watchlistService := services.NewWatchlistService(watchlistRepo)
 	alertsService := services.NewAlertsService(alertsRepo)
 	notificationsService := services.NewNotificationsService(notificationsRepo)
-	alertEngine := services.NewAlertEngine(marketProvider, alertsRepo, notificationsRepo)
+	notificationHub := notificationshub.NewHub()
+	alertEngine := services.NewAlertEngine(marketProvider, alertsRepo, notificationsRepo, notificationHub)
 
 	marketHandler := handler.NewMarketHandler(marketService, watchlistService)
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	alertsHandler := handler.NewAlertsHandler(alertsService, alertEngine)
-	notificationsHandler := handler.NewNotificationsHandler(notificationsService)
+	notificationsHandler := handler.NewNotificationsHandler(notificationsService, notificationHub)
 
 	authService := auth.NewService(cfg.Auth, mongoDB.Users)
 	authHandler := auth.NewHandler(authService, cfg.Auth)
@@ -125,6 +127,7 @@ func main() {
 		api.POST("/alerts/evaluate", alertsHandler.Evaluate)
 		api.DELETE("/alerts/:id", alertsHandler.Delete)
 		api.GET("/notifications", notificationsHandler.List)
+		api.GET("/notifications/stream", notificationsHandler.Stream)
 		api.POST("/notifications/:id/read", notificationsHandler.MarkRead)
 		api.POST("/notifications/read-all", notificationsHandler.MarkAllRead)
 	}

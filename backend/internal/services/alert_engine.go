@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"stock-market/backend/internal/notifications"
 	"stock-market/backend/internal/provider/marketdata"
 	"stock-market/backend/internal/repositories"
 )
@@ -23,14 +24,21 @@ type AlertEngine struct {
 	provider      marketdata.Provider
 	alerts        *repositories.AlertsRepository
 	notifications *repositories.NotificationsRepository
+	hub           *notifications.Hub
 }
 
 func NewAlertEngine(
 	provider marketdata.Provider,
 	alerts *repositories.AlertsRepository,
-	notifications *repositories.NotificationsRepository,
+	notificationsRepo *repositories.NotificationsRepository,
+	hub *notifications.Hub,
 ) *AlertEngine {
-	return &AlertEngine{provider: provider, alerts: alerts, notifications: notifications}
+	return &AlertEngine{
+		provider:      provider,
+		alerts:        alerts,
+		notifications: notificationsRepo,
+		hub:           hub,
+	}
 }
 
 func (e *AlertEngine) Evaluate(ctx context.Context) {
@@ -63,9 +71,15 @@ func (e *AlertEngine) Evaluate(ctx context.Context) {
 			continue
 		}
 
-		if _, err := e.notifications.Create(ctx, alert.UserID, alert.ID, alert.Symbol, title, message); err != nil {
+		created, err := e.notifications.Create(ctx, alert.UserID, alert.ID, alert.Symbol, title, message)
+		if err != nil {
 			log.Printf("alert engine: create notification failed: %v", err)
 			continue
+		}
+
+		unread, err := e.notifications.CountUnread(ctx, alert.UserID)
+		if err == nil && e.hub != nil {
+			e.hub.PublishNotification(alert.UserID, *created, unread)
 		}
 
 		if err := e.alerts.MarkTriggered(ctx, alert.ID); err != nil {
