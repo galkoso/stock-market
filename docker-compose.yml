@@ -1,0 +1,47 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stockmarket
+      POSTGRES_PASSWORD: stockmarket
+      POSTGRES_DB: stockmarket
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGO_CONNECTION_STRING: mongodb://mongo:27017/stockMarketDB
+      POSTGRES_DSN: postgres://stockmarket:stockmarket@postgres:5432/stockmarket?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - mongo
+      - postgres
+      - redis
+
+volumes:
+  mongo_data:
+  postgres_data:
+  redis_data:

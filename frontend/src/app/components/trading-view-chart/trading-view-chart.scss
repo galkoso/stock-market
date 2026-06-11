@@ -1,0 +1,102 @@
+:host {
+  display: block;
+}
+
+.measure-guide {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  border-radius: 0.75rem;
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.measure-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.measure-steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.measure-steps li + li {
+  margin-top: 0.25rem;
+}
+
+.measure-result-hint {
+  margin: 0.45rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25rem;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.chart-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  overflow: hidden;
+  background: #0d1424;
+}
+
+.tradingview-widget-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.resize-handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.45rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible {
+  background: rgba(99, 102, 241, 0.14);
+  outline: none;
+}
+
+.resize-grip {
+  display: block;
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.resize-label {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

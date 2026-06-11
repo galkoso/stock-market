@@ -1,0 +1,152 @@
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(ellipse 80% 130% at 0% 0%, rgba(99, 102, 241, 0.18), transparent),
+    var(--surface);
+}
+
+.hero h1 {
+  margin: 0.4rem 0 0.3rem;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+}
+
+.hero > div > p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.back-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.price-block {
+  text-align: right;
+}
+
+.price-block strong {
+  display: block;
+  font-family: var(--mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-block span {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.metrics-grid article {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: border-color 0.18s;
+}
+
+.metrics-grid article:hover {
+  border-color: var(--border-strong);
+}
+
+.metrics-grid span {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.metrics-grid strong {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.section {
+  margin-top: 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.section h2 {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-toggle {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.section-toggle:hover {
+  color: var(--accent);
+}
+
+.news-item {
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.news-item:last-of-type {
+  border-bottom: none;
+}
+
+.news-item h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.news-item h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.news-item h3 a:hover {
+  color: var(--accent);
+}
+
+.news-item p {
+  margin: 0 0 0.35rem;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.news-item small {
+  color: var(--text-muted);
+}

@@ -1,0 +1,80 @@
+@if (errorMessage()) {
+  <section class="page-card"><p class="error">{{ errorMessage() }}</p></section>
+} @else if (details(); as stock) {
+  <section class="page-card">
+    <header class="hero">
+      <div>
+        <a routerLink="/search" class="back-link">← Back to search</a>
+        <h1>{{ stock.companyName || stock.symbol }}</h1>
+        <p>{{ stock.symbol }} · {{ stock.profile.exchange }} · {{ stock.profile.industry }}</p>
+      </div>
+      <div class="price-block">
+        <strong>${{ stock.quote.currentPrice | number: '1.2-2' }}</strong>
+        <span [class.positive]="stock.quote.dailyChange >= 0" [class.negative]="stock.quote.dailyChange < 0">
+          {{ stock.quote.dailyChange >= 0 ? '+' : '' }}{{ stock.quote.dailyChangePercent | number: '1.2-2' }}%
+        </span>
+      </div>
+    </header>
+
+    <div class="metrics-grid">
+      <article><span>Open</span><strong>${{ stock.quote.open | number: '1.2-2' }}</strong></article>
+      <article><span>High</span><strong>${{ stock.quote.high | number: '1.2-2' }}</strong></article>
+      <article><span>Low</span><strong>${{ stock.quote.low | number: '1.2-2' }}</strong></article>
+      <article><span>Prev Close</span><strong>${{ stock.quote.previousClose | number: '1.2-2' }}</strong></article>
+      <article><span>Market Cap</span><strong>{{ stock.profile.marketCap | number: '1.0-0' }}</strong></article>
+      <article><span>Country</span><strong>{{ stock.profile.country || '—' }}</strong></article>
+    </div>
+
+    <section class="section">
+      <button type="button" class="section-toggle" (click)="chartOpen.set(!chartOpen())">
+        Price chart {{ chartOpen() ? '▾' : '▸' }}
+      </button>
+      @if (chartOpen()) {
+        <app-trading-view-chart [symbol]="stock.symbol" />
+      }
+    </section>
+
+    <section class="section">
+      <h2>News</h2>
+      @for (article of news(); track article.url) {
+        <article class="news-item">
+          <h3><a [href]="article.url" target="_blank" rel="noopener">{{ article.headline }}</a></h3>
+          <p>{{ article.summary }}</p>
+          <small>{{ article.source }} · {{ article.publishedAt | date: 'medium' }}</small>
+        </article>
+      } @empty {
+        <p class="muted">No recent news.</p>
+      }
+    </section>
+
+    <section class="section">
+      <h2>Earnings</h2>
+      @for (event of earnings(); track event.date) {
+        <p>
+          {{ event.date | date: 'mediumDate' }} · {{ event.hour || 'TBA' }} · EPS est.
+          {{ event.epsEstimate != null ? (event.epsEstimate | number: '1.2-2') : '—' }}
+        </p>
+      } @empty {
+        <p class="muted">No upcoming earnings in the next 30 days.</p>
+      }
+    </section>
+
+    <section class="section">
+      <h2>SEC Filings</h2>
+      @for (filing of filings(); track filing.reportUrl) {
+        <p><a [href]="filing.reportUrl" target="_blank" rel="noopener">{{ filing.form }}</a> · {{ filing.filedDate }}</p>
+      } @empty {
+        <p class="muted">No filings available.</p>
+      }
+    </section>
+
+    @if (recommendations().length > 0) {
+      <section class="section">
+        <h2>Analyst Recommendations</h2>
+        @for (rec of recommendations(); track rec.period) {
+          <p>{{ rec.period }}: Strong Buy {{ rec.strongBuy }} · Buy {{ rec.buy }} · Hold {{ rec.hold }} · Sell {{ rec.sell }}</p>
+        }
+      </section>
+    }
+  </section>
+}

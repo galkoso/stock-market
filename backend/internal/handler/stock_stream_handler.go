@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	clientWriteWait  = 10 * time.Second
-	clientPongWait   = 60 * time.Second
-	clientPingPeriod = 54 * time.Second
+	clientWriteWait      = 10 * time.Second
+	clientPongWait       = 60 * time.Second
+	clientPingPeriod     = 54 * time.Second
+	streamMergeBufferSize = 64
 )
 
 type StockStreamHandler struct {
@@ -43,25 +44,44 @@ func NewStockStreamHandler(stockService *service.StockService, streamHub *finnhu
 }
 
 func (h *StockStreamHandler) Stream(c *gin.Context) {
-	symbol := strings.ToUpper(strings.TrimSpace(c.Query("symbol")))
-	if symbol == "" {
-		c.JSON(http.StatusBadRequest, model.APIError{
-			Code:    "MISSING_SYMBOL",
-			Message: "query parameter 'symbol' is required",
-		})
+	symbols, err := parseSymbolsQuery(c.Query("symbol"), c.Query("symbols"))
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrMissingSymbols):
+			c.JSON(http.StatusBadRequest, model.APIError{
+				Code:    "MISSING_SYMBOLS",
+				Message: "query parameter 'symbol' or 'symbols' is required",
+			})
+		case errors.Is(err, service.ErrTooManySymbols):
+			c.JSON(http.StatusBadRequest, model.APIError{
+				Code:    "TOO_MANY_SYMBOLS",
+				Message: err.Error(),
+			})
+		default:
+			c.JSON(http.StatusBadRequest, model.APIError{
+				Code:    "INVALID_SYMBOLS",
+				Message: err.Error(),
+			})
+		}
 		return
 	}
 
-	if err := h.stockService.ValidateSymbol(c.Request.Context(), symbol); err != nil {
-		switch {
-		case errors.Is(err, service.ErrMissingQuery):
-			respondError(c, http.StatusBadRequest, "MISSING_SYMBOL", "query parameter 'symbol' is required")
-		case errors.Is(err, service.ErrSymbolNotFound):
-			respondError(c, http.StatusNotFound, "SYMBOL_NOT_FOUND", err.Error())
-		default:
-			respondError(c, http.StatusBadGateway, "FINNHUB_API_ERROR", "failed to validate symbol")
+	for _, symbol := range symbols {
+		if err := h.stockService.ValidateSymbol(c.Request.Context(), symbol); err != nil {
+			switch {
+			case errors.Is(err, service.ErrSymbolNotFound):
+				c.JSON(http.StatusNotFound, model.APIError{
+					Code:    "SYMBOL_NOT_FOUND",
+					Message: "symbol not found: " + symbol,
+				})
+			default:
+				c.JSON(http.StatusBadGateway, model.APIError{
+					Code:    "FINNHUB_API_ERROR",
+					Message: "failed to validate symbol: " + symbol,
+				})
+			}
+			return
 		}
-		return
 	}
 
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -71,17 +91,16 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	subscription, err := h.streamHub.Subscribe(symbol)
+	subscriptions, updates, cleanup, err := h.subscribeAll(symbols)
 	if err != nil {
 		_ = writeStreamMessage(conn, model.StreamMessage{
 			Type:    "error",
 			Status:  "error",
-			Symbol:  symbol,
 			Message: "failed to subscribe to live prices",
 		})
 		return
 	}
-	defer subscription.Cancel()
+	defer cleanup()
 
 	conn.SetReadDeadline(time.Now().Add(clientPongWait))
 	conn.SetPongHandler(func(string) error {
@@ -90,9 +109,9 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	})
 
 	_ = writeStreamMessage(conn, model.StreamMessage{
-		Type:   "status",
-		Status: "connecting",
-		Symbol: symbol,
+		Type:    "status",
+		Status:  "connecting",
+		Symbols: symbols,
 	})
 
 	done := make(chan struct{})
@@ -104,17 +123,19 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	_ = writeStreamMessage(conn, model.StreamMessage{
 		Type:    "status",
 		Status:  "live",
-		Symbol:  symbol,
-		Message: "Stream active. Price updates on each trade.",
+		Symbols: symbols,
+		Message: "Stream active for " + strings.Join(symbols, ", ") + ". Price updates on each trade.",
 	})
+
+	_ = subscriptions // kept alive until cleanup runs
 
 	for {
 		select {
 		case <-done:
 			_ = writeStreamMessage(conn, model.StreamMessage{
-				Type:   "status",
-				Status: "disconnected",
-				Symbol: symbol,
+				Type:    "status",
+				Status:  "disconnected",
+				Symbols: symbols,
 			})
 			return
 		case <-ticker.C:
@@ -122,12 +143,11 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
-		case update, ok := <-subscription.Updates:
+		case update, ok := <-updates:
 			if !ok {
 				_ = writeStreamMessage(conn, model.StreamMessage{
 					Type:    "error",
 					Status:  "error",
-					Symbol:  symbol,
 					Message: "live stream closed",
 				})
 				return
@@ -145,6 +165,39 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func (h *StockStreamHandler) subscribeAll(symbols []string) ([]*finnhub.Subscription, <-chan finnhub.TradeUpdate, func(), error) {
+	subscriptions := make([]*finnhub.Subscription, 0, len(symbols))
+	updates := make(chan finnhub.TradeUpdate, streamMergeBufferSize*len(symbols))
+
+	for _, symbol := range symbols {
+		subscription, err := h.streamHub.Subscribe(symbol)
+		if err != nil {
+			for _, active := range subscriptions {
+				active.Cancel()
+			}
+			close(updates)
+			return nil, nil, nil, err
+		}
+
+		subscriptions = append(subscriptions, subscription)
+
+		go func(sub *finnhub.Subscription) {
+			for update := range sub.Updates {
+				updates <- update
+			}
+		}(subscription)
+	}
+
+	cleanup := func() {
+		for _, subscription := range subscriptions {
+			subscription.Cancel()
+		}
+		close(updates)
+	}
+
+	return subscriptions, updates, cleanup, nil
 }
 
 func (h *StockStreamHandler) readPump(conn *websocket.Conn, done chan struct{}) {

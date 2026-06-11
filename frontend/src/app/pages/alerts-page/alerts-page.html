@@ -1,0 +1,121 @@
+<section class="page-card alerts-page">
+  <header class="page-header">
+    <div>
+      <h1>Alerts</h1>
+      <p>Get notified before earnings, price targets, filings, and unusual moves.</p>
+    </div>
+    <span class="alert-count">{{ alerts().length }} active</span>
+  </header>
+
+  <div class="alerts-layout">
+    <section class="create-panel">
+      <h2>Create alert</h2>
+
+      <form class="alert-form" (submit)="$event.preventDefault(); createAlert()">
+        <label class="field">
+          <span>Symbol</span>
+          <input
+            type="text"
+            placeholder="e.g. NVDA (optional for some types)"
+            [ngModel]="symbol()"
+            (ngModelChange)="symbol.set($event)"
+            name="symbol"
+          />
+        </label>
+
+        <label class="field">
+          <span>Alert type</span>
+          <select [ngModel]="alertType()" (ngModelChange)="alertType.set($event)" name="alertType">
+            <option value="earnings_days">Earnings reminder</option>
+            <option value="price_above">Price above target</option>
+            <option value="price_below">Price below target</option>
+            <option value="new_filing">New SEC filing</option>
+            <option value="unusual_move">Unusual price move</option>
+          </select>
+        </label>
+
+        @if (alertType() === 'earnings_days') {
+          <label class="field">
+            <span>Days before earnings</span>
+            <input
+              type="number"
+              min="1"
+              placeholder="3"
+              [ngModel]="earningsDays()"
+              (ngModelChange)="earningsDays.set($event)"
+              name="earningsDays"
+            />
+          </label>
+        }
+
+        @if (alertType() === 'price_above' || alertType() === 'price_below') {
+          <label class="field">
+            <span>Target price ($)</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="150.00"
+              [ngModel]="targetPrice()"
+              (ngModelChange)="targetPrice.set($event)"
+              name="targetPrice"
+            />
+          </label>
+        }
+
+        @if (errorMessage()) {
+          <p class="error">{{ errorMessage() }}</p>
+        }
+
+        <button class="btn-primary submit-btn" type="submit" [disabled]="isSubmitting()">
+          {{ isSubmitting() ? 'Creating…' : 'Create alert' }}
+        </button>
+      </form>
+    </section>
+
+    <section class="list-panel">
+      <h2>Your alerts</h2>
+
+      <div class="alerts-list">
+        @for (alert of alerts(); track alert.id) {
+          <article class="alert-card">
+            <div class="alert-main">
+              <div class="alert-top">
+                <span class="type-badge" [class]="alertTypeClass(alert.alertType)">
+                  {{ alertTypeLabel(alert.alertType) }}
+                </span>
+                @if (alert.isActive) {
+                  <span class="active-dot">Active</span>
+                }
+              </div>
+
+              <p class="alert-symbol">{{ alert.symbol || 'Any symbol' }}</p>
+              @if (quoteFor(alert.symbol); as quote) {
+                <p class="alert-price">
+                  <span class="price-label">Current price</span>
+                  <span class="price-value">${{ quote.currentPrice | number: '1.2-2' }}</span>
+                  <span
+                    class="price-change"
+                    [class.positive]="quote.dailyChangePercent >= 0"
+                    [class.negative]="quote.dailyChangePercent < 0"
+                  >
+                    {{ quote.dailyChangePercent >= 0 ? '+' : '' }}{{ quote.dailyChangePercent | number: '1.2-2' }}%
+                  </span>
+                </p>
+              }
+              <p class="alert-detail">{{ alertDetail(alert) }}</p>
+              <p class="alert-date">Created {{ alert.createdAt | date: 'medium' }}</p>
+            </div>
+
+            <button class="btn-ghost danger" type="button" (click)="remove(alert.id)">Delete</button>
+          </article>
+        } @empty {
+          <div class="empty-state">
+            <p class="empty-title">No alerts yet</p>
+            <p class="muted">Create your first alert using the form. Try an earnings reminder for a stock in your watchlist.</p>
+          </div>
+        }
+      </div>
+    </section>
+  </div>
+</section>

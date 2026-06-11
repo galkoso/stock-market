@@ -1,0 +1,36 @@
+<section class="page-card">
+  <h1>Watchlist</h1>
+  <p>Synced to your account. Stocks added from the dashboard appear here too.</p>
+
+  @if (errorMessage()) {
+    <p class="error">{{ errorMessage() }}</p>
+  }
+
+  <div class="items">
+    @for (item of items(); track item.id) {
+      <article class="item-card">
+        <div>
+          <a [routerLink]="['/stock', item.symbol]"><strong>{{ item.symbol }}</strong></a>
+          <span>{{ item.companyName }}</span>
+          <small>{{ earningsCountdown(item.symbol) }}</small>
+        </div>
+        <button class="btn-ghost danger" type="button" (click)="remove(item.symbol)">Remove</button>
+      </article>
+    } @empty {
+      @if (localItems().length > 0) {
+        <p class="muted">Local watchlist has {{ localItems().length }} stock(s). Add from dashboard search to sync here.</p>
+        @for (item of localItems(); track item.symbol) {
+          <article class="item-card">
+            <div>
+              <a [routerLink]="['/stock', item.symbol]"><strong>{{ item.symbol }}</strong></a>
+              <span>{{ item.companyName }}</span>
+              <small>{{ earningsCountdown(item.symbol) }}</small>
+            </div>
+          </article>
+        }
+      } @else {
+        <p class="muted">No stocks yet. Add from Search or Dashboard.</p>
+      }
+    }
+  </div>
+</section>

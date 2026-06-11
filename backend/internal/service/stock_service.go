@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	ErrMissingQuery   = errors.New("search query is required")
-	ErrSymbolNotFound = errors.New("no matching stock symbol found")
-	ErrInvalidQuote   = errors.New("quote data is unavailable for this symbol")
+	ErrMissingQuery    = errors.New("search query is required")
+	ErrMissingSymbols  = errors.New("at least one symbol is required")
+	ErrTooManySymbols  = errors.New("too many symbols requested")
+	ErrSymbolNotFound  = errors.New("no matching stock symbol found")
+	ErrInvalidQuote    = errors.New("quote data is unavailable for this symbol")
 )
 
 type FinnhubClient interface {
@@ -46,28 +48,50 @@ func (s *StockService) SearchStock(ctx context.Context, query string) (*model.St
 		return nil, ErrSymbolNotFound
 	}
 
-	quote, err := s.client.GetQuote(ctx, match.Symbol)
+	return s.buildQuote(ctx, match.Symbol, match.Description)
+}
+
+func (s *StockService) GetQuotes(ctx context.Context, symbols []string) model.QuotesResponse {
+	response := model.QuotesResponse{
+		Quotes: make([]model.StockQuote, 0, len(symbols)),
+		Errors: make([]model.SymbolLookupErr, 0),
+	}
+
+	for _, symbol := range symbols {
+		quote, err := s.GetQuoteBySymbol(ctx, symbol)
+		if err != nil {
+			response.Errors = append(response.Errors, model.SymbolLookupErr{
+				Symbol:  symbol,
+				Message: err.Error(),
+			})
+			continue
+		}
+		response.Quotes = append(response.Quotes, *quote)
+	}
+
+	return response
+}
+
+func (s *StockService) GetQuoteBySymbol(ctx context.Context, symbol string) (*model.StockQuote, error) {
+	trimmed := strings.ToUpper(strings.TrimSpace(symbol))
+	if trimmed == "" {
+		return nil, ErrMissingQuery
+	}
+
+	search, err := s.client.SearchSymbols(ctx, trimmed)
 	if err != nil {
-		return nil, fmt.Errorf("get quote: %w", err)
+		return nil, fmt.Errorf("search symbols: %w", err)
 	}
 
-	if quote.Timestamp == 0 && quote.CurrentPrice == 0 {
-		return nil, ErrInvalidQuote
+	companyName := trimmed
+	for _, result := range search.Result {
+		if strings.EqualFold(result.Symbol, trimmed) {
+			companyName = result.Description
+			break
+		}
 	}
 
-	lastUpdated := time.Unix(quote.Timestamp, 0).UTC()
-	if quote.Timestamp == 0 {
-		lastUpdated = time.Now().UTC()
-	}
-
-	return &model.StockQuote{
-		Symbol:             match.Symbol,
-		CompanyName:        match.Description,
-		CurrentPrice:       quote.CurrentPrice,
-		DailyChange:        quote.DailyChange,
-		DailyChangePercent: quote.DailyChangePercent,
-		LastUpdated:        lastUpdated,
-	}, nil
+	return s.buildQuote(ctx, trimmed, companyName)
 }
 
 func (s *StockService) ValidateSymbol(ctx context.Context, symbol string) error {
@@ -86,6 +110,31 @@ func (s *StockService) ValidateSymbol(ctx context.Context, symbol string) error 
 	}
 
 	return nil
+}
+
+func (s *StockService) buildQuote(ctx context.Context, symbol, companyName string) (*model.StockQuote, error) {
+	quote, err := s.client.GetQuote(ctx, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("get quote: %w", err)
+	}
+
+	if quote.Timestamp == 0 && quote.CurrentPrice == 0 {
+		return nil, ErrInvalidQuote
+	}
+
+	lastUpdated := time.Unix(quote.Timestamp, 0).UTC()
+	if quote.Timestamp == 0 {
+		lastUpdated = time.Now().UTC()
+	}
+
+	return &model.StockQuote{
+		Symbol:             symbol,
+		CompanyName:        companyName,
+		CurrentPrice:       quote.CurrentPrice,
+		DailyChange:        quote.DailyChange,
+		DailyChangePercent: quote.DailyChangePercent,
+		LastUpdated:        lastUpdated,
+	}, nil
 }
 
 func pickBestMatch(query string, results []finnhub.SearchResult) *finnhub.SearchResult {

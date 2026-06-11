@@ -1,0 +1,132 @@
+@if (displayEvent(); as e) {
+  <div class="dialog-backdrop" (click)="onBackdropClick($event)" role="presentation">
+    <div class="dialog" role="dialog" aria-modal="true" [attr.aria-labelledby]="'earnings-dialog-title'">
+      <header class="dialog-header">
+        <div>
+          <p class="dialog-eyebrow">Earnings report</p>
+          <h2 id="earnings-dialog-title" class="dialog-title">{{ e.symbol }}</h2>
+          <p class="dialog-subtitle">{{ e.companyName || 'Company earnings' }}</p>
+          <span class="status-badge" [class.upcoming]="isUpcoming()" [class.reported]="isReported()">
+            {{ isUpcoming() ? 'Upcoming report' : 'Past report' }}
+          </span>
+        </div>
+        <button type="button" class="close-btn" (click)="close()" aria-label="Close dialog">×</button>
+      </header>
+
+      <div class="dialog-body">
+        @if (isLoadingDetail()) {
+          <p class="loading-note">Loading detailed EPS data from Finnhub…</p>
+        }
+
+        @if (isUpcoming()) {
+          <p class="status-banner upcoming">
+            <strong>Future earnings.</strong>
+            Estimate = analyst forecast before the report.
+            Actual = not published yet — appears after earnings day.
+          </p>
+        } @else {
+          <p class="status-banner reported">
+            <strong>Past earnings.</strong>
+            Estimate = what analysts expected.
+            Actual = what the company reported.
+          </p>
+        }
+
+        @if (detailNote()) {
+          <p class="api-note">{{ detailNote() }}</p>
+        }
+
+        <dl class="details-grid">
+          <div class="detail-row">
+            <dt>Report date</dt>
+            <dd>{{ e.date | date: 'fullDate' }}</dd>
+          </div>
+
+          <div class="detail-row">
+            <dt>Quarter</dt>
+            <dd>Q{{ e.quarter }} {{ e.year }}</dd>
+          </div>
+
+          <div class="detail-row">
+            <dt>Report time</dt>
+            <dd>
+              <span class="time-badge" [class.bmo]="e.hour === 'bmo'" [class.amc]="e.hour === 'amc'" [class.dmh]="e.hour === 'dmh'">
+                {{ hourLabel(e.hour) }}
+              </span>
+            </dd>
+          </div>
+        </dl>
+
+        <section class="metrics-section">
+          <h3>Earnings per share (EPS)</h3>
+          <div class="metric-pair">
+            <article class="metric-box">
+              <span class="metric-label">
+                @if (isUpcoming()) { Forecast (expected) } @else { Expected before report }
+              </span>
+              <strong class="metric-value">{{ formatEps(e.epsEstimate) }}</strong>
+            </article>
+            <article
+              class="metric-box"
+              [class.beat]="isReported() && epsBeat(e) === 'beat'"
+              [class.miss]="isReported() && epsBeat(e) === 'miss'"
+              [class.pending]="isUpcoming()"
+            >
+              <span class="metric-label">
+                @if (isUpcoming()) { Actual (not yet) } @else { Reported result }
+              </span>
+              <strong class="metric-value">{{ formatEps(e.epsActual) }}</strong>
+              @if (isReported() && epsBeat(e) === 'beat') {
+                <span class="result-tag positive">Beat estimate</span>
+              } @else if (isReported() && epsBeat(e) === 'miss') {
+                <span class="result-tag negative">Missed estimate</span>
+              } @else if (isReported() && epsBeat(e) === 'inline') {
+                <span class="result-tag">Matched estimate</span>
+              }
+            </article>
+          </div>
+
+          @if (e.epsSurprise != null || e.epsSurprisePercent != null) {
+            <div class="surprise-row">
+              <span>EPS surprise: {{ formatEps(e.epsSurprise) }}</span>
+              <span>Surprise %: {{ formatSurprisePercent(e.epsSurprisePercent) }}</span>
+            </div>
+          }
+        </section>
+
+        <section class="metrics-section">
+          <h3>Revenue</h3>
+          <div class="metric-pair">
+            <article class="metric-box">
+              <span class="metric-label">
+                @if (isUpcoming()) { Forecast (expected) } @else { Expected before report }
+              </span>
+              <strong class="metric-value">{{ formatRevenue(e.revenueEstimate) }}</strong>
+            </article>
+            <article
+              class="metric-box"
+              [class.beat]="isReported() && revenueBeat(e) === 'beat'"
+              [class.miss]="isReported() && revenueBeat(e) === 'miss'"
+              [class.pending]="isUpcoming()"
+            >
+              <span class="metric-label">
+                @if (isUpcoming()) { Actual (not yet) } @else { Reported result }
+              </span>
+              <strong class="metric-value">{{ formatRevenue(e.revenueActual) }}</strong>
+            </article>
+          </div>
+          @if (e.revenueEstimate == null && e.revenueActual == null) {
+            <p class="metric-hint block-hint">
+              Revenue is not included in Finnhub /stock/earnings. On the free plan it only appears in calendar/earnings for some upcoming reports.
+            </p>
+          }
+        </section>
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn-ghost" (click)="close()">Close</button>
+        <a class="btn-primary" [routerLink]="['/stock', e.symbol]" (click)="close()">View stock details</a>
+      </footer>
+    </div>
+  </div>
+}

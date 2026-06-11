@@ -1,0 +1,122 @@
+<section class="page-card calendar-page">
+  <header class="page-header">
+    <div>
+      <h1>Events Calendar</h1>
+      <p>Upcoming reports by default. Turn on "Show past reports" to see history.</p>
+    </div>
+
+    <div class="controls">
+      <button
+        type="button"
+        class="toggle-btn"
+        [class.active]="watchlistOnly()"
+        (click)="toggleWatchlistOnly()"
+      >
+        <span class="toggle-dot"></span>
+        My watchlist only
+      </button>
+
+      <button
+        type="button"
+        class="toggle-btn"
+        [class.active]="showPast()"
+        (click)="toggleShowPast()"
+      >
+        <span class="toggle-dot"></span>
+        Show past reports
+      </button>
+
+      <div class="month-nav">
+        <button type="button" class="nav-btn" (click)="prevMonth()" aria-label="Previous month">‹</button>
+        <button type="button" class="today-btn" (click)="goToday()">Today</button>
+        <button type="button" class="nav-btn" (click)="nextMonth()" aria-label="Next month">›</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="month-row">
+    <h2 class="month-label">{{ monthLabel() }}</h2>
+    @if (!isLoading() && !errorMessage()) {
+      <span class="month-count">{{ monthEventCount() }} events this month</span>
+    }
+  </div>
+
+  @if (errorMessage()) {
+    <p class="error">{{ errorMessage() }}</p>
+  }
+
+  @if (watchlistOnly() && watchlistEmpty()) {
+    <p class="hint">
+      Your watchlist is empty — add stocks from the dashboard, or turn off "My watchlist only" to see all events.
+    </p>
+  }
+
+  <div class="calendar-grid" [class.loading]="isLoading()">
+    @for (label of weekdayLabels; track label) {
+      <div class="weekday">{{ label }}</div>
+    }
+
+    @for (day of days(); track day.iso) {
+      <button
+        type="button"
+        class="day-cell"
+        [class.out-month]="!day.inMonth"
+        [class.past-day]="showPast() && isPastDay(day.iso)"
+        [class.today]="day.isToday"
+        [class.selected]="day.iso === selectedDay()"
+        [class.has-events]="day.events.length > 0"
+        (click)="selectDay(day.iso)"
+      >
+        <span class="day-num">{{ day.dayNumber }}</span>
+        <span class="day-chips">
+          @for (event of day.visibleEvents; track event.symbol + event.date) {
+            <button
+              type="button"
+              class="event-chip"
+              [class.past]="isPastDay(day.iso)"
+              (click)="openEventDialog(event, $event)"
+            >
+              {{ event.symbol }}
+            </button>
+          }
+          @if (day.moreCount > 0) {
+            <span class="more-chip">+{{ day.moreCount }}</span>
+          }
+        </span>
+      </button>
+    }
+  </div>
+
+  <section class="day-panel">
+    <header class="day-panel-header">
+      <h2>{{ selectedDay() | date: 'fullDate' }}</h2>
+      <span class="day-panel-count">
+        {{ selectedDayEvents().length }} {{ selectedDayEvents().length === 1 ? 'event' : 'events' }}
+      </span>
+    </header>
+
+    <div class="day-events">
+      @for (event of selectedDayEvents(); track event.symbol + event.date) {
+        <button type="button" class="day-event-card" (click)="openEventDialog(event)">
+          <span class="event-symbol">{{ event.symbol }}</span>
+          <span class="event-company">{{ event.companyName || 'Earnings report' }}</span>
+          <span class="event-meta">
+            <span class="event-time" [class.bmo]="event.hour === 'bmo'" [class.amc]="event.hour === 'amc'">
+              {{ hourLabel(event.hour) }}
+            </span>
+            <span class="event-est">
+              EPS est. {{ event.epsEstimate != null ? (event.epsEstimate | number: '1.2-2') : '—' }}
+              · Rev est. {{ formatRevenue(event.revenueEstimate) }}
+            </span>
+          </span>
+        </button>
+      } @empty {
+        <p class="muted">No stock events on this day.</p>
+      }
+    </div>
+  </section>
+
+  @if (selectedEvent(); as event) {
+    <app-earnings-dialog [event]="event" (closed)="closeEventDialog()" />
+  }
+</section>

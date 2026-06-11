@@ -1,5 +1,6 @@
 import { Injectable, NgZone, inject, signal } from '@angular/core';
-import { LivePriceUpdate, StreamMessage, StreamStatus } from '../models/stock.model';
+import { LivePriceState, StreamMessage, StreamStatus } from '../models/stock.model';
+import { AuthService } from './auth.service';
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
@@ -7,39 +8,38 @@ const RECONNECT_BASE_DELAY_MS = 1000;
 @Injectable({ providedIn: 'root' })
 export class StockStreamService {
   private readonly zone = inject(NgZone);
+  private readonly authService = inject(AuthService);
 
   readonly status = signal<StreamStatus>('idle');
-  readonly livePrice = signal<number | null>(null);
-  readonly lastTradeAt = signal<number | null>(null);
+  readonly livePrices = signal<Record<string, LivePriceState>>({});
   readonly errorMessage = signal<string | null>(null);
   readonly streamHint = signal<string | null>(null);
-  readonly tradeCount = signal(0);
+  readonly activeSymbols = signal<string[]>([]);
 
   private socket: WebSocket | null = null;
-  private activeSymbol: string | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
 
-  connect(symbol: string): void {
-    const normalized = symbol.trim().toUpperCase();
-    if (!normalized) {
+  connect(symbols: string[]): void {
+    const normalized = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort();
+
+    if (normalized.length === 0) {
+      this.disconnect();
       return;
     }
 
-    if (this.activeSymbol === normalized && this.socket) {
+    const current = [...this.activeSymbols()].sort();
+    if (this.socket && JSON.stringify(current) === JSON.stringify(normalized)) {
       return;
     }
 
     this.disconnect(false);
     this.intentionalClose = false;
-    this.activeSymbol = normalized;
+    this.activeSymbols.set(normalized);
     this.status.set('connecting');
     this.errorMessage.set(null);
     this.streamHint.set(null);
-    this.tradeCount.set(0);
-    this.livePrice.set(null);
-    this.lastTradeAt.set(null);
     this.openSocket(normalized);
   }
 
@@ -56,21 +56,19 @@ export class StockStreamService {
       this.socket = null;
     }
 
-    this.activeSymbol = null;
     this.reconnectAttempts = 0;
 
     if (userInitiated) {
       this.status.set('idle');
-      this.livePrice.set(null);
-      this.lastTradeAt.set(null);
+      this.activeSymbols.set([]);
+      this.livePrices.set({});
       this.errorMessage.set(null);
       this.streamHint.set(null);
-      this.tradeCount.set(0);
     }
   }
 
-  private openSocket(symbol: string): void {
-    const url = this.buildWsUrl(symbol);
+  private openSocket(symbols: string[]): void {
+    const url = this.buildWsUrl(symbols);
     this.socket = new WebSocket(url);
 
     this.socket.onopen = () => {
@@ -104,8 +102,8 @@ export class StockStreamService {
           return;
         }
 
-        if (this.activeSymbol === symbol) {
-          this.scheduleReconnect(symbol);
+        if (this.activeSymbols().length > 0) {
+          this.scheduleReconnect(symbols);
         }
       });
     };
@@ -140,16 +138,27 @@ export class StockStreamService {
       return;
     }
 
-    if (message.type === 'trade' && message.price != null) {
+    if (message.type === 'trade' && message.symbol && message.price != null) {
+      const symbol = message.symbol.toUpperCase();
+      const timestamp = message.timestamp ?? Date.now();
+
       this.status.set('live');
-      this.livePrice.set(message.price);
-      this.lastTradeAt.set(message.timestamp ?? Date.now());
-      this.tradeCount.update((count) => count + 1);
-      this.streamHint.set('Live price updating on each trade.');
+      this.livePrices.update((current) => {
+        const existing = current[symbol];
+        return {
+          ...current,
+          [symbol]: {
+            price: message.price!,
+            timestamp,
+            tradeCount: (existing?.tradeCount ?? 0) + 1,
+          },
+        };
+      });
+      this.streamHint.set(`Live updates for ${this.activeSymbols().length} symbol(s).`);
     }
   }
 
-  private scheduleReconnect(symbol: string): void {
+  private scheduleReconnect(symbols: string[]): void {
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       this.status.set('error');
       this.errorMessage.set('Unable to reconnect to live prices.');
@@ -162,8 +171,8 @@ export class StockStreamService {
     const delay = RECONNECT_BASE_DELAY_MS * this.reconnectAttempts;
     this.clearReconnectTimer();
     this.reconnectTimer = setTimeout(() => {
-      if (this.activeSymbol === symbol && !this.intentionalClose) {
-        this.openSocket(symbol);
+      if (this.activeSymbols().length > 0 && !this.intentionalClose) {
+        this.openSocket(symbols);
       }
     }, delay);
   }
@@ -175,8 +184,17 @@ export class StockStreamService {
     }
   }
 
-  private buildWsUrl(symbol: string): string {
+  private buildWsUrl(symbols: string[]): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/ws/stocks?symbol=${encodeURIComponent(symbol)}`;
+    const params = new URLSearchParams({
+      symbols: symbols.join(','),
+    });
+
+    const accessToken = this.authService.getStoredAccessToken();
+    if (accessToken) {
+      params.set('access_token', accessToken);
+    }
+
+    return `${protocol}//${window.location.host}/ws/stocks?${params.toString()}`;
   }
 }

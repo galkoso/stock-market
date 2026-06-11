@@ -1,0 +1,28 @@
+<div class="measure-guide">
+  <p class="measure-title">Compare two points on the chart</p>
+  <ul class="measure-steps">
+    <li>
+      <strong>Drag measure:</strong> open the left toolbar, choose <strong>Measure</strong>, then drag from the first point to the second.
+    </li>
+    <li>
+      <strong>Quick measure:</strong> hold <kbd>Shift</kbd>, click the start point, then click the end point.
+    </li>
+  </ul>
+  <p class="measure-result-hint">
+    TradingView shows price change, percent change, bars, and time between the two points.
+  </p>
+</div>
+
+<div #shell class="chart-shell" [style.height.px]="chartHeight()">
+  <div #container class="tradingview-widget-container"></div>
+  <button
+    type="button"
+    class="resize-handle"
+    aria-label="Drag to resize chart"
+    (mousedown)="startResize($event)"
+    (touchstart)="startResize($event)"
+  >
+    <span class="resize-grip" aria-hidden="true"></span>
+    <span class="resize-label">Drag to resize</span>
+  </button>
+</div>

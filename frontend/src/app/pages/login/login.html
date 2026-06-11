@@ -1,0 +1,64 @@
+<div class="auth-page">
+  <section class="auth-card">
+    <p class="eyebrow">Stock Market</p>
+    <h1>{{ mode() === 'signin' ? 'Welcome back' : 'Create account' }}</h1>
+    <p class="subtitle">
+      {{ mode() === 'signin' ? 'Sign in to access your watchlist.' : 'Register to start tracking stocks.' }}
+    </p>
+
+    <div class="mode-toggle">
+      <button
+        type="button"
+        class="mode-btn"
+        [class.active]="mode() === 'signin'"
+        (click)="setMode('signin')"
+      >
+        Sign in
+      </button>
+      <button
+        type="button"
+        class="mode-btn"
+        [class.active]="mode() === 'signup'"
+        (click)="setMode('signup')"
+      >
+        Sign up
+      </button>
+    </div>
+
+    <form class="auth-form" (submit)="onSubmit($event)">
+      <label class="field">
+        <span>Username</span>
+        <input
+          type="text"
+          autocomplete="username"
+          placeholder="yourname"
+          [ngModel]="username()"
+          (ngModelChange)="username.set($event)"
+          name="username"
+          required
+        />
+      </label>
+
+      <label class="field">
+        <span>Password</span>
+        <input
+          type="password"
+          autocomplete="current-password"
+          placeholder="••••••••"
+          [ngModel]="password()"
+          (ngModelChange)="password.set($event)"
+          name="password"
+          required
+        />
+      </label>
+
+      @if (errorMessage()) {
+        <p class="form-error">{{ errorMessage() }}</p>
+      }
+
+      <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
+        {{ isSubmitting() ? 'Please wait...' : mode() === 'signin' ? 'Log in' : 'Create account' }}
+      </button>
+    </form>
+  </section>
+</div>

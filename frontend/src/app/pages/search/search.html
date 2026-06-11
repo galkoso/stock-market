@@ -1,0 +1,22 @@
+<section class="page-card">
+  <h1>Search Stocks</h1>
+  <p>Find any stock by symbol or company name.</p>
+  <form (submit)="onSearch($event)" class="search-form">
+    <input type="search" placeholder="AAPL, Tesla, NVIDIA..." [ngModel]="query()" (ngModelChange)="query.set($event)" name="q" />
+    <button class="btn-primary" type="submit" [disabled]="isLoading()">{{ isLoading() ? 'Searching...' : 'Search' }}</button>
+  </form>
+
+  @if (errorMessage()) {
+    <p class="error">{{ errorMessage() }}</p>
+  }
+
+  <div class="results">
+    @for (item of results(); track item.symbol) {
+      <a class="result-card" [routerLink]="['/stock', item.symbol]">
+        <strong>{{ item.symbol }}</strong>
+        <span>{{ item.companyName }}</span>
+        <small>{{ item.exchange }} · {{ item.industry || item.type }}</small>
+      </a>
+    }
+  </div>
+</section>

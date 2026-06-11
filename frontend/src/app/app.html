@@ -1,55 +1,97 @@
-<main class="page">
-  <section class="hero">
-    <p class="eyebrow">Stock Market Search</p>
-    <h1>Find live stock prices</h1>
-    <p class="subtitle">Search by company name or ticker — for example Apple, AAPL, Tesla, or TSLA.</p>
-  </section>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <p class="eyebrow">Watchlist</p>
+      <p class="watchlist-count">{{ watchlist().length }} / {{ maxWatchlistSize }}</p>
+      @if (hasWatchlist()) {
+        <span
+          class="connection-badge"
+          [class.connecting]="streamStatus() === 'connecting'"
+          [class.live]="streamStatus() === 'live'"
+          [class.disconnected]="streamStatus() === 'disconnected'"
+          [class.error]="streamStatus() === 'error'"
+        >
+          {{ streamStatusLabel() }}
+        </span>
+      }
+    </div>
 
-  <form class="search-card" (submit)="onSearch($event)">
-    <label class="search-label" for="stock-search">Search stocks</label>
-    <div class="search-row">
+    <form class="sidebar-search" (submit)="onSearch($event)">
+      <label class="search-label" for="stock-search">Add stock</label>
       <input
         id="stock-search"
         type="search"
         name="q"
-        placeholder="Apple or AAPL"
+        placeholder="AAPL, Tesla..."
         autocomplete="off"
         [disabled]="isLoading()"
         [ngModel]="searchQuery()"
         (ngModelChange)="searchQuery.set($event)"
-        (keydown.enter)="onSearch($event)"
       />
-      <button type="submit" [disabled]="isLoading()">
+      <button type="submit" class="add-btn" [disabled]="isLoading()">
         @if (isLoading()) {
-          Searching...
+          Adding...
         } @else {
-          Search
+          Add
         }
       </button>
-    </div>
-  </form>
+    </form>
 
-  @if (isLoading()) {
-    <section class="state-card loading" aria-live="polite">
-      <div class="spinner" aria-hidden="true"></div>
-      <p>Fetching the latest quote...</p>
-    </section>
-  }
+    @if (hasError()) {
+      <p class="sidebar-error">{{ errorMessage() }}</p>
+    }
+    @if (sidebarMessage()) {
+      <p class="sidebar-info">{{ sidebarMessage() }}</p>
+    }
 
-  @if (hasError()) {
-    <section class="state-card error" aria-live="assertive">
-      <h2>Unable to load stock</h2>
-      <p>{{ errorMessage() }}</p>
-    </section>
-  }
+    <nav class="watchlist-nav" aria-label="Watchlist">
+      @if (!hasWatchlist()) {
+        <p class="empty-list">Search above to add your first stock.</p>
+      } @else {
+        @for (item of watchlist(); track item.symbol) {
+          <button
+            type="button"
+            class="watchlist-item"
+            [class.selected]="isSelected(item.symbol)"
+            (click)="selectStock(item.symbol)"
+          >
+            <div class="watchlist-item-main">
+              <span class="item-symbol">{{ item.symbol }}</span>
+              <span class="item-price">${{ displayPrice(item) | number: '1.2-2' }}</span>
+            </div>
+            <div class="watchlist-item-sub">
+              <span class="item-name">{{ item.companyName }}</span>
+              <span
+                class="item-change"
+                [class.positive]="isPositiveChange(item.dailyChange)"
+                [class.negative]="!isPositiveChange(item.dailyChange)"
+              >
+                {{ item.dailyChange >= 0 ? '+' : '' }}{{ item.dailyChangePercent | number: '1.2-2' }}%
+              </span>
+            </div>
+            <span
+              class="remove-btn"
+              role="button"
+              tabindex="0"
+              aria-label="Remove {{ item.symbol }}"
+              (click)="removeFromWatchlist(item.symbol, $event)"
+              (keydown.enter)="removeFromWatchlist(item.symbol, $event)"
+            >
+              ×
+            </span>
+          </button>
+        }
+      }
+    </nav>
+  </aside>
 
-  @if (hasResult(); as _) {
-    @if (stock(); as quote) {
-      <section class="result-card" aria-live="polite">
-        <div class="result-header">
+  <main class="detail-panel">
+    @if (selectedStock(); as stock) {
+      <section class="detail-card">
+        <header class="detail-header">
           <div>
-            <p class="symbol">{{ quote.symbol }}</p>
-            <h2>{{ quote.companyName }}</h2>
+            <p class="symbol">{{ stock.symbol }}</p>
+            <h1>{{ stock.companyName }}</h1>
           </div>
           <div class="header-badges">
             <span
@@ -61,11 +103,15 @@
             >
               {{ streamStatusLabel() }}
             </span>
-            <span class="badge" [class.positive]="isPositiveChange()" [class.negative]="!isPositiveChange()">
-              {{ isPositiveChange() ? 'Up today' : 'Down today' }}
+            <span
+              class="badge"
+              [class.positive]="isPositiveChange(stock.dailyChange)"
+              [class.negative]="!isPositiveChange(stock.dailyChange)"
+            >
+              {{ isPositiveChange(stock.dailyChange) ? 'Up today' : 'Down today' }}
             </span>
           </div>
-        </div>
+        </header>
 
         @if (streamError()) {
           <p class="stream-error">{{ streamError() }}</p>
@@ -73,30 +119,49 @@
           <p class="stream-hint">{{ streamHint() }}</p>
         }
 
-        <div class="price-grid">
-          <article class="metric highlight">
-            <span class="metric-label">
-              @if (livePrice()) {
-                Live price
-              } @else if (streamStatus() === 'live') {
-                Last REST price
-              } @else {
-                Current price
-              }
-            </span>
-            @if (displayPrice(); as price) {
-              <strong class="metric-value price">${{ price | number: '1.2-2' }}</strong>
+        <div class="detail-price-block">
+          <span class="metric-label">
+            @if (stock.livePrice) {
+              Live price
+            } @else {
+              Current price
             }
-          </article>
+          </span>
+          <strong class="detail-price">${{ displayPrice(stock) | number: '1.2-2' }}</strong>
+        </div>
 
+        <section class="detail-chart" [class.is-open]="chartOpen()">
+          <button
+            type="button"
+            class="chart-toggle"
+            (click)="toggleChart()"
+            [attr.aria-expanded]="chartOpen()"
+            aria-controls="stock-chart-panel"
+          >
+            <span class="chart-toggle-main">
+              <span class="chart-chevron" aria-hidden="true"></span>
+              <span class="chart-heading">Price chart</span>
+            </span>
+            <span class="chart-toggle-label">{{ chartOpen() ? 'Hide chart' : 'Show chart' }}</span>
+          </button>
+
+          @if (chartOpen()) {
+            <div id="stock-chart-panel" class="chart-panel">
+              <p class="chart-note">Powered by TradingView — use the measure tool to compare two points.</p>
+              <app-trading-view-chart [symbol]="stock.symbol" />
+            </div>
+          }
+        </section>
+
+        <div class="detail-grid">
           <article class="metric">
             <span class="metric-label">Daily change</span>
             <strong
               class="metric-value"
-              [class.positive]="isPositiveChange()"
-              [class.negative]="!isPositiveChange()"
+              [class.positive]="isPositiveChange(stock.dailyChange)"
+              [class.negative]="!isPositiveChange(stock.dailyChange)"
             >
-              {{ quote.dailyChange >= 0 ? '+' : '' }}{{ quote.dailyChange | number: '1.2-2' }}
+              {{ stock.dailyChange >= 0 ? '+' : '' }}{{ stock.dailyChange | number: '1.2-2' }}
             </strong>
           </article>
 
@@ -104,29 +169,39 @@
             <span class="metric-label">Daily change %</span>
             <strong
               class="metric-value"
-              [class.positive]="isPositiveChange()"
-              [class.negative]="!isPositiveChange()"
+              [class.positive]="isPositiveChange(stock.dailyChange)"
+              [class.negative]="!isPositiveChange(stock.dailyChange)"
             >
-              {{ quote.dailyChangePercent >= 0 ? '+' : '' }}{{ quote.dailyChangePercent | number: '1.2-2' }}%
+              {{ stock.dailyChangePercent >= 0 ? '+' : '' }}{{ stock.dailyChangePercent | number: '1.2-2' }}%
             </strong>
           </article>
 
           <article class="metric">
-            <span class="metric-label">Last updated</span>
-            <strong class="metric-value">
-              @if (lastTradeAt(); as tradeTime) {
-                {{ tradeTime | date: 'medium' }}
-              } @else {
-                {{ quote.lastUpdated | date: 'medium' }}
-              }
-            </strong>
+            <span class="metric-label">REST snapshot price</span>
+            <strong class="metric-value">${{ stock.currentPrice | number: '1.2-2' }}</strong>
           </article>
+
           <article class="metric">
             <span class="metric-label">Live trades received</span>
-            <strong class="metric-value">{{ tradeCount() }}</strong>
+            <strong class="metric-value">{{ stock.tradeCount }}</strong>
+          </article>
+
+          <article class="metric">
+            <span class="metric-label">Last updated</span>
+            <strong class="metric-value">{{ updatedAt(stock) | date: 'medium' }}</strong>
+          </article>
+
+          <article class="metric">
+            <span class="metric-label">Symbol</span>
+            <strong class="metric-value">{{ stock.symbol }}</strong>
           </article>
         </div>
       </section>
+    } @else {
+      <section class="detail-empty">
+        <h1>Stock details</h1>
+        <p>Select a symbol from the watchlist, or search to add a new stock.</p>
+      </section>
     }
-  }
-</main>
+  </main>
+</div>

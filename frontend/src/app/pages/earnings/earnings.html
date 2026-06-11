@@ -1,0 +1,74 @@
+<section class="page-card">
+  <header class="page-header">
+    <div>
+      <h1>Earnings Calendar</h1>
+      <p>Upcoming earnings for the next 3 months.</p>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <label class="search-box">
+      <span>Filter by symbol</span>
+      <input
+        type="search"
+        placeholder="e.g. AAPL, NVDA"
+        [value]="symbolFilter()"
+        (input)="symbolFilter.set($any($event.target).value)"
+      />
+    </label>
+
+    <button
+      type="button"
+      class="toggle-btn"
+      [class.active]="watchlistOnly()"
+      (click)="toggleWatchlistOnly()"
+    >
+      <span class="toggle-dot"></span>
+      My watchlist only
+    </button>
+  </div>
+
+  @if (watchlistOnly() && watchlistEmpty()) {
+    <p class="hint">
+      Your watchlist is empty — add stocks from the dashboard, or turn off "My watchlist only" to see all earnings.
+    </p>
+  }
+
+  @if (isLoading()) {
+    <p class="muted">Loading earnings...</p>
+  } @else if (errorMessage()) {
+    <p class="error">{{ errorMessage() }}</p>
+  } @else if (filteredEarnings().length === 0) {
+    <p class="muted">
+      {{ watchlistOnly() ? 'No earnings for your watchlist stocks in this period.' : 'No earnings found for this period.' }}
+    </p>
+  } @else {
+    <div class="table-wrap">
+      <table class="earnings-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Company</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>EPS Est.</th>
+            <th>Revenue Est.</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of filteredEarnings(); track row.symbol + row.date) {
+            <tr>
+              <td><a [routerLink]="['/stock', row.symbol]">{{ row.symbol }}</a></td>
+              <td>{{ row.companyName }}</td>
+              <td>{{ row.date | date: 'mediumDate' }}</td>
+              <td>{{ row.hour || '—' }}</td>
+              <td>{{ row.epsEstimate != null ? (row.epsEstimate | number: '1.2-2') : '—' }}</td>
+              <td>{{ row.revenueEstimate != null ? (row.revenueEstimate | number: '1.0-0') : '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="result-count">{{ filteredEarnings().length }} companies</p>
+  }
+</section>
