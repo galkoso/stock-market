@@ -36,10 +36,6 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/calendar/calendar-page').then((m) => m.CalendarPage),
       },
       {
-        path: 'watchlist',
-        loadComponent: () => import('./pages/watchlist-page/watchlist-page').then((m) => m.WatchlistPage),
-      },
-      {
         path: 'alerts',
         loadComponent: () => import('./pages/alerts-page/alerts-page').then((m) => m.AlertsPage),
       },

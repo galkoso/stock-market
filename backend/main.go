@@ -8,7 +8,6 @@ import (
 	"stock-market/backend/internal/auth"
 	"stock-market/backend/internal/cache"
 	"stock-market/backend/internal/config"
-	"stock-market/backend/internal/database"
 	"stock-market/backend/internal/finnhub"
 	"stock-market/backend/internal/handler"
 	"stock-market/backend/internal/middleware"
@@ -44,12 +43,6 @@ func main() {
 		}
 	}()
 
-	postgresDB, err := database.Connect(ctx, cfg.PostgresDSN)
-	if err != nil {
-		log.Fatalf("postgres connection error: %v", err)
-	}
-	defer postgresDB.Close()
-
 	redisCache, err := cache.Connect(ctx, cfg.RedisURL)
 	if err != nil {
 		log.Fatalf("redis connection error: %v", err)
@@ -69,9 +62,9 @@ func main() {
 	stockHandler := handler.NewStockHandler(stockService)
 	streamHandler := handler.NewStockStreamHandler(stockService, streamHub)
 
-	watchlistRepo := repositories.NewWatchlistRepository(postgresDB.Pool)
-	alertsRepo := repositories.NewAlertsRepository(postgresDB.Pool)
-	notificationsRepo := repositories.NewNotificationsRepository(postgresDB.Pool)
+	watchlistRepo := repositories.NewWatchlistRepository(mongoDB.Watchlist)
+	alertsRepo := repositories.NewAlertsRepository(mongoDB.Alerts)
+	notificationsRepo := repositories.NewNotificationsRepository(mongoDB.Notifications)
 
 	marketService := services.NewMarketService(marketProvider)
 	watchlistService := services.NewWatchlistService(watchlistRepo)

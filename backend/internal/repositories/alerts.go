@@ -2,62 +2,52 @@ package repositories
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Alert struct {
-	ID              string         `json:"id"`
-	UserID          string         `json:"userId"`
-	Symbol          string         `json:"symbol,omitempty"`
-	AlertType       string         `json:"alertType"`
-	Params          map[string]any `json:"params"`
-	IsActive        bool           `json:"isActive"`
-	LastTriggeredAt *time.Time     `json:"lastTriggeredAt,omitempty"`
-	CreatedAt       time.Time      `json:"createdAt"`
+	ID              string         `json:"id" bson:"_id"`
+	UserID          string         `json:"userId" bson:"userId"`
+	Symbol          string         `json:"symbol,omitempty" bson:"symbol,omitempty"`
+	AlertType       string         `json:"alertType" bson:"alertType"`
+	Params          map[string]any `json:"params" bson:"params"`
+	IsActive        bool           `json:"isActive" bson:"isActive"`
+	LastTriggeredAt *time.Time     `json:"lastTriggeredAt,omitempty" bson:"lastTriggeredAt,omitempty"`
+	CreatedAt       time.Time      `json:"createdAt" bson:"createdAt"`
 }
 
 type AlertsRepository struct {
-	pool *pgxpool.Pool
+	collection *mongo.Collection
 }
 
-func NewAlertsRepository(pool *pgxpool.Pool) *AlertsRepository {
-	return &AlertsRepository{pool: pool}
+func NewAlertsRepository(collection *mongo.Collection) *AlertsRepository {
+	return &AlertsRepository{collection: collection}
 }
 
 func (r *AlertsRepository) List(ctx context.Context, userID string) ([]Alert, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, user_id, COALESCE(symbol, ''), alert_type, params, is_active, last_triggered_at, created_at
-		FROM alerts
-		WHERE user_id = $1
-		ORDER BY created_at DESC
-	`, userID)
+	cursor, err := r.collection.Find(ctx, bson.M{"userId": userID}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	alerts := make([]Alert, 0)
-	for rows.Next() {
-		var alert Alert
-		var paramsRaw []byte
-		if err := rows.Scan(
-			&alert.ID, &alert.UserID, &alert.Symbol, &alert.AlertType, &paramsRaw,
-			&alert.IsActive, &alert.LastTriggeredAt, &alert.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		_ = json.Unmarshal(paramsRaw, &alert.Params)
-		if alert.Params == nil {
-			alert.Params = map[string]any{}
-		}
-		alerts = append(alerts, alert)
+	if err := cursor.All(ctx, &alerts); err != nil {
+		return nil, err
 	}
 
-	return alerts, rows.Err()
+	for i := range alerts {
+		if alerts[i].Params == nil {
+			alerts[i].Params = map[string]any{}
+		}
+	}
+
+	return alerts, nil
 }
 
 func (r *AlertsRepository) Create(ctx context.Context, userID, symbol, alertType string, params map[string]any) (*Alert, error) {
@@ -65,68 +55,51 @@ func (r *AlertsRepository) Create(ctx context.Context, userID, symbol, alertType
 		params = map[string]any{}
 	}
 
-	paramsRaw, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
+	alert := Alert{
+		ID:        uuid.NewString(),
+		UserID:    userID,
+		Symbol:    symbol,
+		AlertType: alertType,
+		Params:    params,
+		IsActive:  true,
+		CreatedAt: time.Now(),
 	}
 
-	id := uuid.NewString()
-	var alert Alert
-	var paramsOut []byte
-	err = r.pool.QueryRow(ctx, `
-		INSERT INTO alerts (id, user_id, symbol, alert_type, params)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5)
-		RETURNING id::text, user_id, COALESCE(symbol, ''), alert_type, params, is_active, last_triggered_at, created_at
-	`, id, userID, symbol, alertType, paramsRaw).Scan(
-		&alert.ID, &alert.UserID, &alert.Symbol, &alert.AlertType, &paramsOut,
-		&alert.IsActive, &alert.LastTriggeredAt, &alert.CreatedAt,
-	)
-	if err != nil {
+	if _, err := r.collection.InsertOne(ctx, alert); err != nil {
 		return nil, err
 	}
-	_ = json.Unmarshal(paramsOut, &alert.Params)
 
 	return &alert, nil
 }
 
 func (r *AlertsRepository) Delete(ctx context.Context, userID, alertID string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM alerts WHERE user_id = $1 AND id = $2`, userID, alertID)
+	_, err := r.collection.DeleteOne(ctx, bson.M{"_id": alertID, "userId": userID})
 	return err
 }
 
 func (r *AlertsRepository) MarkTriggered(ctx context.Context, alertID string) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE alerts SET last_triggered_at = NOW() WHERE id = $1
-	`, alertID)
+	now := time.Now()
+	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": alertID}, bson.M{"$set": bson.M{"lastTriggeredAt": now}})
 	return err
 }
 
 func (r *AlertsRepository) ListActive(ctx context.Context) ([]Alert, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, user_id, COALESCE(symbol, ''), alert_type, params, is_active, last_triggered_at, created_at
-		FROM alerts WHERE is_active = TRUE
-	`)
+	cursor, err := r.collection.Find(ctx, bson.M{"isActive": true})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	alerts := make([]Alert, 0)
-	for rows.Next() {
-		var alert Alert
-		var paramsRaw []byte
-		if err := rows.Scan(
-			&alert.ID, &alert.UserID, &alert.Symbol, &alert.AlertType, &paramsRaw,
-			&alert.IsActive, &alert.LastTriggeredAt, &alert.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		_ = json.Unmarshal(paramsRaw, &alert.Params)
-		if alert.Params == nil {
-			alert.Params = map[string]any{}
-		}
-		alerts = append(alerts, alert)
+	if err := cursor.All(ctx, &alerts); err != nil {
+		return nil, err
 	}
 
-	return alerts, rows.Err()
+	for i := range alerts {
+		if alerts[i].Params == nil {
+			alerts[i].Params = map[string]any{}
+		}
+	}
+
+	return alerts, nil
 }

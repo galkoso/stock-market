@@ -5,42 +5,46 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Notification struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"userId"`
-	AlertID   string    `json:"alertId,omitempty"`
-	Symbol    string    `json:"symbol,omitempty"`
-	Title     string    `json:"title"`
-	Message   string    `json:"message"`
-	IsRead    bool      `json:"isRead"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID        string    `json:"id" bson:"_id"`
+	UserID    string    `json:"userId" bson:"userId"`
+	AlertID   string    `json:"alertId,omitempty" bson:"alertId,omitempty"`
+	Symbol    string    `json:"symbol,omitempty" bson:"symbol,omitempty"`
+	Title     string    `json:"title" bson:"title"`
+	Message   string    `json:"message" bson:"message"`
+	IsRead    bool      `json:"isRead" bson:"isRead"`
+	CreatedAt time.Time `json:"createdAt" bson:"createdAt"`
 }
 
 type NotificationsRepository struct {
-	pool *pgxpool.Pool
+	collection *mongo.Collection
 }
 
-func NewNotificationsRepository(pool *pgxpool.Pool) *NotificationsRepository {
-	return &NotificationsRepository{pool: pool}
+func NewNotificationsRepository(collection *mongo.Collection) *NotificationsRepository {
+	return &NotificationsRepository{collection: collection}
 }
 
 func (r *NotificationsRepository) Create(ctx context.Context, userID, alertID, symbol, title, message string) (*Notification, error) {
-	id := uuid.NewString()
-	var notification Notification
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO notifications (id, user_id, alert_id, symbol, title, message)
-		VALUES ($1, $2, NULLIF($3, '')::uuid, NULLIF($4, ''), $5, $6)
-		RETURNING id::text, user_id, COALESCE(alert_id::text, ''), COALESCE(symbol, ''), title, message, is_read, created_at
-	`, id, userID, alertID, symbol, title, message).Scan(
-		&notification.ID, &notification.UserID, &notification.AlertID, &notification.Symbol,
-		&notification.Title, &notification.Message, &notification.IsRead, &notification.CreatedAt,
-	)
-	if err != nil {
+	notification := Notification{
+		ID:        uuid.NewString(),
+		UserID:    userID,
+		AlertID:   alertID,
+		Symbol:    symbol,
+		Title:     title,
+		Message:   message,
+		IsRead:    false,
+		CreatedAt: time.Now(),
+	}
+
+	if _, err := r.collection.InsertOne(ctx, notification); err != nil {
 		return nil, err
 	}
+
 	return &notification, nil
 }
 
@@ -49,60 +53,51 @@ func (r *NotificationsRepository) List(ctx context.Context, userID string, limit
 		limit = 50
 	}
 
-	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, user_id, COALESCE(alert_id::text, ''), COALESCE(symbol, ''), title, message, is_read, created_at
-		FROM notifications
-		WHERE user_id = $1
-		ORDER BY created_at DESC
-		LIMIT $2
-	`, userID, limit)
+	cursor, err := r.collection.Find(
+		ctx,
+		bson.M{"userId": userID},
+		options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetLimit(int64(limit)),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	items := make([]Notification, 0)
-	for rows.Next() {
-		var item Notification
-		if err := rows.Scan(
-			&item.ID, &item.UserID, &item.AlertID, &item.Symbol,
-			&item.Title, &item.Message, &item.IsRead, &item.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	if err := cursor.All(ctx, &items); err != nil {
+		return nil, err
 	}
-	return items, rows.Err()
+
+	return items, nil
 }
 
 func (r *NotificationsRepository) CountUnread(ctx context.Context, userID string) (int, error) {
-	var count int
-	err := r.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE
-	`, userID).Scan(&count)
-	return count, err
+	count, err := r.collection.CountDocuments(ctx, bson.M{"userId": userID, "isRead": false})
+	return int(count), err
 }
 
 func (r *NotificationsRepository) MarkRead(ctx context.Context, userID, notificationID string) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND id = $2
-	`, userID, notificationID)
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": notificationID, "userId": userID},
+		bson.M{"$set": bson.M{"isRead": true}},
+	)
 	return err
 }
 
 func (r *NotificationsRepository) MarkAllRead(ctx context.Context, userID string) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE
-	`, userID)
+	_, err := r.collection.UpdateMany(
+		ctx,
+		bson.M{"userId": userID, "isRead": false},
+		bson.M{"$set": bson.M{"isRead": true}},
+	)
 	return err
 }
 
 func (r *NotificationsRepository) ExistsRecentForAlert(ctx context.Context, alertID string, since time.Time) (bool, error) {
-	var exists bool
-	err := r.pool.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM notifications WHERE alert_id = $1::uuid AND created_at >= $2
-		)
-	`, alertID, since).Scan(&exists)
-	return exists, err
+	count, err := r.collection.CountDocuments(ctx, bson.M{
+		"alertId":   alertID,
+		"createdAt": bson.M{"$gte": since},
+	})
+	return count > 0, err
 }

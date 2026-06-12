@@ -21,7 +21,6 @@ type Config struct {
 	Port          string
 	FinnhubAPIKey string
 	MongoURI      string
-	PostgresDSN   string
 	RedisURL      string
 	Auth          auth.Config
 }
@@ -37,11 +36,6 @@ func Load() (*Config, error) {
 	mongoURI := os.Getenv("MONGO_CONNECTION_STRING")
 	if mongoURI == "" {
 		return nil, errors.New("MONGO_CONNECTION_STRING environment variable is required")
-	}
-
-	postgresDSN := os.Getenv("POSTGRES_DSN")
-	if postgresDSN == "" {
-		return nil, errors.New("POSTGRES_DSN environment variable is required")
 	}
 
 	redisURL := os.Getenv("REDIS_URL")
@@ -83,7 +77,6 @@ func Load() (*Config, error) {
 		Port:          port,
 		FinnhubAPIKey: apiKey,
 		MongoURI:      mongoURI,
-		PostgresDSN:   postgresDSN,
 		RedisURL:      redisURL,
 		Auth: auth.Config{
 			RefreshTokenCookie:           refreshCookie,

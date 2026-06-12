@@ -5,62 +5,58 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type WatchlistItem struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	Symbol      string    `json:"symbol"`
-	CompanyName string    `json:"companyName"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string    `json:"id" bson:"_id"`
+	UserID      string    `json:"userId" bson:"userId"`
+	Symbol      string    `json:"symbol" bson:"symbol"`
+	CompanyName string    `json:"companyName" bson:"companyName"`
+	CreatedAt   time.Time `json:"createdAt" bson:"createdAt"`
 }
 
 type WatchlistRepository struct {
-	pool *pgxpool.Pool
+	collection *mongo.Collection
 }
 
-func NewWatchlistRepository(pool *pgxpool.Pool) *WatchlistRepository {
-	return &WatchlistRepository{pool: pool}
+func NewWatchlistRepository(collection *mongo.Collection) *WatchlistRepository {
+	return &WatchlistRepository{collection: collection}
 }
 
 func (r *WatchlistRepository) List(ctx context.Context, userID string) ([]WatchlistItem, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, user_id, symbol, company_name, created_at
-		FROM watchlist_items
-		WHERE user_id = $1
-		ORDER BY created_at ASC
-	`, userID)
+	cursor, err := r.collection.Find(ctx, bson.M{"userId": userID}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	items := make([]WatchlistItem, 0)
-	for rows.Next() {
-		var item WatchlistItem
-		if err := rows.Scan(&item.ID, &item.UserID, &item.Symbol, &item.CompanyName, &item.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	if err := cursor.All(ctx, &items); err != nil {
+		return nil, err
 	}
 
-	return items, rows.Err()
+	return items, nil
 }
 
 func (r *WatchlistRepository) Add(ctx context.Context, userID, symbol, companyName string) (*WatchlistItem, error) {
-	id := uuid.NewString()
+	now := time.Now()
+	filter := bson.M{"userId": userID, "symbol": symbol}
+	update := bson.M{
+		"$set": bson.M{"companyName": companyName},
+		"$setOnInsert": bson.M{
+			"_id":       uuid.NewString(),
+			"userId":    userID,
+			"symbol":    symbol,
+			"createdAt": now,
+		},
+	}
+
+	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
 	var item WatchlistItem
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO watchlist_items (id, user_id, symbol, company_name)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (user_id, symbol) DO UPDATE
-		SET company_name = EXCLUDED.company_name
-		RETURNING id::text, user_id, symbol, company_name, created_at
-	`, id, userID, symbol, companyName).Scan(
-		&item.ID, &item.UserID, &item.Symbol, &item.CompanyName, &item.CreatedAt,
-	)
-	if err != nil {
+	if err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&item); err != nil {
 		return nil, err
 	}
 
@@ -68,29 +64,25 @@ func (r *WatchlistRepository) Add(ctx context.Context, userID, symbol, companyNa
 }
 
 func (r *WatchlistRepository) Remove(ctx context.Context, userID, symbol string) error {
-	_, err := r.pool.Exec(ctx, `
-		DELETE FROM watchlist_items WHERE user_id = $1 AND symbol = $2
-	`, userID, symbol)
+	_, err := r.collection.DeleteOne(ctx, bson.M{"userId": userID, "symbol": symbol})
 	return err
 }
 
 func (r *WatchlistRepository) Symbols(ctx context.Context, userID string) ([]string, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT symbol FROM watchlist_items WHERE user_id = $1 ORDER BY created_at ASC
-	`, userID)
+	cursor, err := r.collection.Find(ctx, bson.M{"userId": userID}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	symbols := make([]string, 0)
-	for rows.Next() {
-		var symbol string
-		if err := rows.Scan(&symbol); err != nil {
+	for cursor.Next(ctx) {
+		var item WatchlistItem
+		if err := cursor.Decode(&item); err != nil {
 			return nil, err
 		}
-		symbols = append(symbols, symbol)
+		symbols = append(symbols, item.Symbol)
 	}
 
-	return symbols, rows.Err()
+	return symbols, cursor.Err()
 }
