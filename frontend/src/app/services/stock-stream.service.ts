@@ -25,7 +25,11 @@ export class StockStreamService {
     const normalized = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort();
 
     if (normalized.length === 0) {
-      this.disconnect();
+      this.disconnect(false);
+      this.activeSymbols.set([]);
+      this.status.set('idle');
+      this.errorMessage.set(null);
+      this.streamHint.set(null);
       return;
     }
 

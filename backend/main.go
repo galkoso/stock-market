@@ -9,6 +9,7 @@ import (
 	"stock-market/backend/internal/cache"
 	"stock-market/backend/internal/config"
 	"stock-market/backend/internal/finnhub"
+	"stock-market/backend/internal/forex"
 	"stock-market/backend/internal/handler"
 	"stock-market/backend/internal/middleware"
 	mongopkg "stock-market/backend/internal/mongo"
@@ -55,6 +56,7 @@ func main() {
 
 	finnhubClient := finnhub.NewClient(cfg.FinnhubAPIKey)
 	marketProvider := finnhubprovider.New(finnhubClient, redisCache)
+	forexClient := forex.NewClient(redisCache)
 	streamHub := finnhub.NewWSHub(cfg.FinnhubAPIKey)
 	defer streamHub.Close()
 
@@ -65,9 +67,11 @@ func main() {
 	watchlistRepo := repositories.NewWatchlistRepository(mongoDB.Watchlist)
 	alertsRepo := repositories.NewAlertsRepository(mongoDB.Alerts)
 	notificationsRepo := repositories.NewNotificationsRepository(mongoDB.Notifications)
+	portfolioRepo := repositories.NewPortfolioRepository(mongoDB.Portfolio)
 
 	marketService := services.NewMarketService(marketProvider)
 	watchlistService := services.NewWatchlistService(watchlistRepo)
+	portfolioService := services.NewPortfolioService(portfolioRepo, marketProvider, forexClient)
 	alertsService := services.NewAlertsService(alertsRepo)
 	notificationsService := services.NewNotificationsService(notificationsRepo)
 	notificationHub := notificationshub.NewHub()
@@ -75,6 +79,7 @@ func main() {
 
 	marketHandler := handler.NewMarketHandler(marketService, watchlistService)
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
+	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 	alertsHandler := handler.NewAlertsHandler(alertsService, alertEngine)
 	notificationsHandler := handler.NewNotificationsHandler(notificationsService, notificationHub)
 
@@ -115,6 +120,11 @@ func main() {
 		api.GET("/watchlist", watchlistHandler.List)
 		api.POST("/watchlist", watchlistHandler.Add)
 		api.DELETE("/watchlist/:symbol", watchlistHandler.Remove)
+		api.GET("/portfolio/allocation", portfolioHandler.Allocation)
+		api.GET("/portfolio", portfolioHandler.List)
+		api.POST("/portfolio", portfolioHandler.Add)
+		api.PUT("/portfolio/:symbol", portfolioHandler.Update)
+		api.DELETE("/portfolio/:symbol", portfolioHandler.Remove)
 		api.GET("/alerts", alertsHandler.List)
 		api.POST("/alerts", alertsHandler.Create)
 		api.POST("/alerts/evaluate", alertsHandler.Evaluate)

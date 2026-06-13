@@ -1,21 +1,21 @@
 import { DecimalPipe, DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { TradingViewChart } from './components/trading-view-chart/trading-view-chart';
-import { WatchlistApiService } from './services/watchlist-api.service';
-import { StockStreamService } from './services/stock-stream.service';
-import { StockService } from './services/stock.service';
-import { MAX_WATCHLIST_SIZE, WatchlistService } from './services/watchlist.service';
+import { TradingViewChart } from '../../components/trading-view-chart/trading-view-chart';
+import { WatchlistApiService } from '../../services/watchlist-api.service';
+import { StockStreamService } from '../../services/stock-stream.service';
+import { StockService } from '../../services/stock.service';
+import { MAX_WATCHLIST_SIZE, WatchlistService } from '../../services/watchlist.service';
 
 const CHART_OPEN_KEY = 'stock-market-chart-open';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-monitor-page',
   imports: [FormsModule, DecimalPipe, DatePipe, TradingViewChart],
-  templateUrl: './app.html',
-  styleUrl: './app.scss',
+  templateUrl: './monitor-page.html',
+  styleUrl: './monitor-page.scss',
 })
-export class App implements OnInit, OnDestroy {
+export class MonitorPage implements OnInit {
   private readonly stockService = inject(StockService);
   private readonly stockStreamService = inject(StockStreamService);
   private readonly watchlistService = inject(WatchlistService);
@@ -94,10 +94,6 @@ export class App implements OnInit, OnDestroy {
     });
   }
 
-  ngOnDestroy(): void {
-    this.stockStreamService.disconnect();
-  }
-
   protected onSearch(event?: Event): void {
     event?.preventDefault();
 
@@ -167,7 +163,6 @@ export class App implements OnInit, OnDestroy {
     this.chartOpen.set(next);
     localStorage.setItem(CHART_OPEN_KEY, String(next));
   }
-
 }
 
 function loadChartOpen(): boolean {

@@ -17,7 +17,16 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        loadComponent: () => import('./app').then((m) => m.App),
+        loadComponent: () => import('./pages/portfolio/portfolio-page').then((m) => m.PortfolioPage),
+      },
+      {
+        path: 'portfolio',
+        redirectTo: '',
+        pathMatch: 'full',
+      },
+      {
+        path: 'monitor',
+        loadComponent: () => import('./pages/monitor/monitor-page').then((m) => m.MonitorPage),
       },
       {
         path: 'search',

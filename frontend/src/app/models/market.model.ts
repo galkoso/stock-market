@@ -116,3 +116,39 @@ export interface NotificationRecord {
   isRead: boolean;
   createdAt: string;
 }
+
+export interface PortfolioHoldingRecord {
+  id: string;
+  userId: string;
+  symbol: string;
+  quantity: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AllocationHoldingRecord {
+  symbol: string;
+  quantity: number;
+  price: number;
+  priceIls: number;
+  previousClose: number;
+  dailyChange: number;
+  dailyChangePercent: number;
+  marketValue: number;
+  marketValueIls: number;
+  allocationPercent: number;
+}
+
+export interface LiveAllocationHoldingRecord extends AllocationHoldingRecord {
+  livePrice: number | null;
+  isLive: boolean;
+  dailyPnL: number;
+  dailyPnLIls: number;
+}
+
+export interface PortfolioAllocationRecord {
+  totalValue: number;
+  totalValueIls: number;
+  usdToIls: number;
+  holdings: AllocationHoldingRecord[];
+}

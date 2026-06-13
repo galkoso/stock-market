@@ -1,0 +1,313 @@
+<section class="page-card portfolio-page">
+  <header class="page-header">
+    <div>
+      <h1>Portfolio</h1>
+      <p>Track your holdings and see how your portfolio is allocated across positions.</p>
+    </div>
+    <div class="header-badges">
+      @if (hasHoldings()) {
+        <span
+          class="connection-badge"
+          [class.connecting]="streamStatus() === 'connecting'"
+          [class.live]="streamStatus() === 'live'"
+          [class.disconnected]="streamStatus() === 'disconnected'"
+          [class.error]="streamStatus() === 'error'"
+        >
+          {{ streamStatusLabel() }}
+        </span>
+      }
+      @if (usdToIls() > 0) {
+        <span class="fx-badge">1 USD = ₪{{ usdToIls() | number: '1.2-4' }}</span>
+      }
+      @if (lastUpdated()) {
+        <span class="updated-badge">Updated {{ lastUpdated() | date: 'shortTime' }}</span>
+      }
+    </div>
+  </header>
+
+  @if (streamError()) {
+    <p class="stream-error">{{ streamError() }}</p>
+  }
+
+  <div class="summary-grid">
+    <article class="summary-card primary">
+      <span class="summary-label">Total portfolio value</span>
+      <strong class="summary-value num">${{ totalValue() | number: '1.2-2' }}</strong>
+      <span class="summary-value-secondary num">₪{{ totalValueIls() | number: '1.2-2' }}</span>
+    </article>
+    <article class="summary-card" [class.gain]="dailyPnL() >= 0" [class.loss]="dailyPnL() < 0">
+      <span class="summary-label">Today's P/L</span>
+      <strong
+        class="summary-value num"
+        [class.positive]="dailyPnL() >= 0"
+        [class.negative]="dailyPnL() < 0"
+      >
+        {{ dailyPnL() >= 0 ? '+' : '' }}${{ dailyPnL() | number: '1.2-2' }}
+      </strong>
+      <span
+        class="summary-value-secondary num"
+        [class.positive]="dailyPnLIls() >= 0"
+        [class.negative]="dailyPnLIls() < 0"
+      >
+        {{ dailyPnLIls() >= 0 ? '+' : '' }}₪{{ dailyPnLIls() | number: '1.2-2' }}
+      </span>
+    </article>
+    <article class="summary-card">
+      <span class="summary-label">Largest position</span>
+      @if (liveAllocationHoldings().length > 0) {
+        <strong class="summary-value">
+          {{ liveAllocationHoldings()[0].symbol }}
+          <span class="summary-sub num">{{ liveAllocationHoldings()[0].allocationPercent | number: '1.1-1' }}%</span>
+        </strong>
+      } @else {
+        <strong class="summary-value muted">—</strong>
+      }
+    </article>
+  </div>
+
+  <div class="portfolio-layout">
+    <section class="panel chart-panel">
+      <h2>Allocation</h2>
+      @if (isLoading()) {
+        <p class="muted loading-text">Loading allocation…</p>
+      } @else {
+        <app-portfolio-allocation-chart
+          [holdings]="liveAllocationHoldings()"
+          [totalValue]="totalValue()"
+          [totalValueIls]="totalValueIls()"
+        />
+      }
+    </section>
+
+    <section class="panel form-panel">
+      <h2>Add holding</h2>
+      <form class="holding-form" (submit)="$event.preventDefault(); addHolding()">
+        <label class="field">
+          <span>Symbol</span>
+          <input
+            type="text"
+            placeholder="e.g. AAPL"
+            [ngModel]="symbol()"
+            (ngModelChange)="symbol.set($event)"
+            name="symbol"
+          />
+        </label>
+
+        <label class="field">
+          <span>Quantity</span>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            placeholder="10"
+            [ngModel]="quantity()"
+            (ngModelChange)="quantity.set($event)"
+            name="quantity"
+          />
+        </label>
+
+        @if (errorMessage()) {
+          <p class="error">{{ errorMessage() }}</p>
+        }
+
+        <button class="btn-primary submit-btn" type="submit" [disabled]="isSubmitting()">
+          {{ isSubmitting() ? 'Adding…' : 'Add holding' }}
+        </button>
+      </form>
+    </section>
+  </div>
+
+  <section class="panel holdings-panel">
+    <div class="holdings-header">
+      <h2>Holdings</h2>
+      <span class="holdings-count">{{ holdingsCount() }} positions</span>
+    </div>
+
+    @if (monitorMessage()) {
+      <p class="monitor-info">{{ monitorMessage() }}</p>
+    }
+
+    @if (!hasHoldings() && !isLoading()) {
+      <div class="empty-state">
+        <p class="empty-title">No holdings yet</p>
+        <p class="muted">Add your first position using the form above to see allocation and market value.</p>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="holdings-table">
+          <thead>
+            <tr>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'symbol'" (click)="toggleSort('symbol')">
+                  Symbol
+                  @if (sortIndicator('symbol'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'dailyPnL'" (click)="toggleSort('dailyPnL')">
+                  Today's P/L
+                  @if (sortIndicator('dailyPnL'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'price'" (click)="toggleSort('price')">
+                  Price
+                  @if (sortIndicator('price'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'dailyChangePercent'" (click)="toggleSort('dailyChangePercent')">
+                  Change
+                  @if (sortIndicator('dailyChangePercent'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'marketValue'" (click)="toggleSort('marketValue')">
+                  Market value
+                  @if (sortIndicator('marketValue'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'allocationPercent'" (click)="toggleSort('allocationPercent')">
+                  Allocation
+                  @if (sortIndicator('allocationPercent'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th>
+                <button type="button" class="sort-btn" [class.active]="sortColumn() === 'updatedAt'" (click)="toggleSort('updatedAt')">
+                  Updated
+                  @if (sortIndicator('updatedAt'); as indicator) {
+                    <span class="sort-icon" aria-hidden="true">{{ indicator }}</span>
+                  }
+                </button>
+              </th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of sortedTableRows(); track row.holding.id) {
+              <tr [class.live-row]="row.live?.isLive">
+                <td class="symbol-cell">{{ row.holding.symbol }}</td>
+                <td>
+                  @if (editingSymbol() === row.holding.symbol) {
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      class="inline-input"
+                      [ngModel]="editQuantity()"
+                      (ngModelChange)="editQuantity.set($event)"
+                      [name]="'edit-' + row.holding.symbol"
+                      placeholder="Qty"
+                      title="Edit quantity"
+                    />
+                  } @else if (row.live; as live) {
+                    <div class="dual-value pnl-value">
+                      <span
+                        class="num primary-currency"
+                        [class.positive]="isPositiveChange(live.dailyPnL)"
+                        [class.negative]="!isPositiveChange(live.dailyPnL)"
+                      >
+                        {{ live.dailyPnL >= 0 ? '+' : '' }}${{ live.dailyPnL | number: '1.2-2' }}
+                      </span>
+                      <span
+                        class="num secondary-currency"
+                        [class.positive]="isPositiveChange(live.dailyPnLIls)"
+                        [class.negative]="!isPositiveChange(live.dailyPnLIls)"
+                      >
+                        {{ live.dailyPnLIls >= 0 ? '+' : '' }}₪{{ live.dailyPnLIls | number: '1.2-2' }}
+                      </span>
+                    </div>
+                  } @else {
+                    —
+                  }
+                </td>
+                <td>
+                  @if (row.live; as live) {
+                    <div class="dual-value">
+                      <span class="num primary-currency">
+                        @if (live.isLive) {
+                          <span class="live-dot" aria-hidden="true"></span>
+                        }
+                        ${{ live.price | number: '1.2-2' }}
+                      </span>
+                      <span class="num secondary-currency">₪{{ live.priceIls | number: '1.2-2' }}</span>
+                    </div>
+                  } @else {
+                    —
+                  }
+                </td>
+                <td>
+                  @if (row.live; as live) {
+                    <span
+                      class="change-badge num"
+                      [class.positive]="isPositiveChange(live.dailyChangePercent)"
+                      [class.negative]="!isPositiveChange(live.dailyChangePercent)"
+                    >
+                      {{ live.dailyChangePercent >= 0 ? '+' : '' }}{{ live.dailyChangePercent | number: '1.2-2' }}%
+                    </span>
+                  } @else {
+                    —
+                  }
+                </td>
+                <td>
+                  @if (row.live; as live) {
+                    <div class="dual-value">
+                      <span class="num primary-currency">${{ live.marketValue | number: '1.2-2' }}</span>
+                      <span class="num secondary-currency">₪{{ live.marketValueIls | number: '1.2-2' }}</span>
+                    </div>
+                  } @else {
+                    —
+                  }
+                </td>
+                <td class="num">
+                  @if (row.live; as live) {
+                    {{ live.allocationPercent | number: '1.2-2' }}%
+                  } @else {
+                    —
+                  }
+                </td>
+                <td class="date-cell">{{ row.holding.updatedAt | date: 'mediumDate' }}</td>
+                <td class="actions-cell">
+                  @if (editingSymbol() === row.holding.symbol) {
+                    <button class="btn-ghost" type="button" (click)="saveEdit(row.holding.symbol)" [disabled]="isSubmitting()">
+                      Save
+                    </button>
+                    <button class="btn-ghost" type="button" (click)="cancelEdit()">Cancel</button>
+                  } @else {
+                    @if (isInMonitor(row.holding.symbol)) {
+                      <button class="btn-ghost monitor-added" type="button" disabled>In Monitor</button>
+                    } @else {
+                      <button
+                        class="btn-ghost monitor-add"
+                        type="button"
+                        (click)="addToMonitor(row.holding.symbol)"
+                        [disabled]="addingToMonitor() === row.holding.symbol"
+                      >
+                        {{ addingToMonitor() === row.holding.symbol ? 'Adding…' : 'Monitor' }}
+                      </button>
+                    }
+                    <button class="btn-ghost" type="button" (click)="startEdit(row.holding)">Edit</button>
+                    <button class="btn-ghost danger" type="button" (click)="remove(row.holding.symbol)">Delete</button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</section>

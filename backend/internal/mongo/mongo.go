@@ -19,6 +19,7 @@ const (
 	watchlistCollectionName     = "watchlist_items"
 	alertsCollectionName        = "alerts"
 	notificationsCollectionName = "notifications"
+	portfolioCollectionName     = "portfolio_holdings"
 )
 
 type Database struct {
@@ -28,6 +29,7 @@ type Database struct {
 	Watchlist     *mongo.Collection
 	Alerts        *mongo.Collection
 	Notifications *mongo.Collection
+	Portfolio     *mongo.Collection
 }
 
 func Connect(ctx context.Context, connectionString string) (*Database, error) {
@@ -55,11 +57,12 @@ func Connect(ctx context.Context, connectionString string) (*Database, error) {
 	watchlist := db.Collection(watchlistCollectionName)
 	alerts := db.Collection(alertsCollectionName)
 	notifications := db.Collection(notificationsCollectionName)
+	portfolio := db.Collection(portfolioCollectionName)
 
 	indexCtx, indexCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer indexCancel()
 
-	if err := ensureIndexes(indexCtx, users, watchlist, alerts, notifications); err != nil {
+	if err := ensureIndexes(indexCtx, users, watchlist, alerts, notifications, portfolio); err != nil {
 		_ = client.Disconnect(context.Background())
 		return nil, err
 	}
@@ -71,10 +74,11 @@ func Connect(ctx context.Context, connectionString string) (*Database, error) {
 		Watchlist:     watchlist,
 		Alerts:        alerts,
 		Notifications: notifications,
+		Portfolio:     portfolio,
 	}, nil
 }
 
-func ensureIndexes(ctx context.Context, users, watchlist, alerts, notifications *mongo.Collection) error {
+func ensureIndexes(ctx context.Context, users, watchlist, alerts, notifications, portfolio *mongo.Collection) error {
 	if _, err := users.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "username", Value: 1}},
 		Options: options.Index().SetUnique(true),
@@ -123,6 +127,19 @@ func ensureIndexes(ctx context.Context, users, watchlist, alerts, notifications 
 		Keys: bson.D{{Key: "alertId", Value: 1}, {Key: "createdAt", Value: -1}},
 	}); err != nil {
 		return fmt.Errorf("create notifications alert index: %w", err)
+	}
+
+	if _, err := portfolio.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "userId", Value: 1}, {Key: "symbol", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}); err != nil {
+		return fmt.Errorf("create portfolio index: %w", err)
+	}
+
+	if _, err := portfolio.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "userId", Value: 1}},
+	}); err != nil {
+		return fmt.Errorf("create portfolio user index: %w", err)
 	}
 
 	return nil

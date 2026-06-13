@@ -3,6 +3,7 @@ import { Component, HostListener, inject, OnDestroy, OnInit, signal } from '@ang
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { NotificationRecord } from '../../models/market.model';
 import { AuthService } from '../../services/auth.service';
+import { MarketStreamCoordinatorService } from '../../services/market-stream-coordinator.service';
 import { NotificationsService } from '../../services/notifications.service';
 
 @Component({
@@ -15,6 +16,7 @@ export class MainLayout implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly notificationsService = inject(NotificationsService);
+  private readonly streamCoordinator = inject(MarketStreamCoordinatorService);
 
   protected readonly currentUser = this.authService.currentUser;
   protected readonly notifications = this.notificationsService.notifications;
@@ -27,6 +29,7 @@ export class MainLayout implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.notificationsService.disconnect();
+    this.streamCoordinator.stop();
   }
 
   @HostListener('document:click')
@@ -63,6 +66,7 @@ export class MainLayout implements OnInit, OnDestroy {
 
   protected async logout(): Promise<void> {
     this.notificationsService.disconnect();
+    this.streamCoordinator.stop();
     await this.authService.logout();
     await this.router.navigate(['/login']);
   }
@@ -71,8 +75,9 @@ export class MainLayout implements OnInit, OnDestroy {
     try {
       await this.notificationsService.load();
       this.notificationsService.connect();
+      await this.streamCoordinator.start();
     } catch {
-      // Ignore initial load errors — SSE will reconnect when backend is available.
+      // Ignore initial load errors — streams reconnect when backend is available.
     }
   }
 
