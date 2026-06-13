@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -66,22 +67,13 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 		return
 	}
 
-	for _, symbol := range symbols {
-		if err := h.stockService.ValidateSymbol(c.Request.Context(), symbol); err != nil {
-			switch {
-			case errors.Is(err, service.ErrSymbolNotFound):
-				c.JSON(http.StatusNotFound, model.APIError{
-					Code:    "SYMBOL_NOT_FOUND",
-					Message: "symbol not found: " + symbol,
-				})
-			default:
-				c.JSON(http.StatusBadGateway, model.APIError{
-					Code:    "FINNHUB_API_ERROR",
-					Message: "failed to validate symbol: " + symbol,
-				})
-			}
-			return
-		}
+	validSymbols, skippedSymbols := h.filterValidSymbols(c.Request.Context(), symbols)
+	if len(validSymbols) == 0 {
+		c.JSON(http.StatusBadRequest, model.APIError{
+			Code:    "NO_VALID_SYMBOLS",
+			Message: "none of the requested symbols could be validated",
+		})
+		return
 	}
 
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -91,7 +83,7 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	subscriptions, updates, cleanup, err := h.subscribeAll(symbols)
+	subscriptions, updates, cleanup, err := h.subscribeAll(validSymbols)
 	if err != nil {
 		_ = writeStreamMessage(conn, model.StreamMessage{
 			Type:    "error",
@@ -111,7 +103,7 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	_ = writeStreamMessage(conn, model.StreamMessage{
 		Type:    "status",
 		Status:  "connecting",
-		Symbols: symbols,
+		Symbols: validSymbols,
 	})
 
 	done := make(chan struct{})
@@ -120,11 +112,16 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 	ticker := time.NewTicker(clientPingPeriod)
 	defer ticker.Stop()
 
+	liveMessage := "Stream active for " + strings.Join(validSymbols, ", ") + ". Price updates on each trade."
+	if len(skippedSymbols) > 0 {
+		liveMessage += " Skipped unavailable symbols: " + strings.Join(skippedSymbols, ", ") + "."
+	}
+
 	_ = writeStreamMessage(conn, model.StreamMessage{
 		Type:    "status",
 		Status:  "live",
-		Symbols: symbols,
-		Message: "Stream active for " + strings.Join(symbols, ", ") + ". Price updates on each trade.",
+		Symbols: validSymbols,
+		Message: liveMessage,
 	})
 
 	_ = subscriptions // kept alive until cleanup runs
@@ -135,7 +132,7 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 			_ = writeStreamMessage(conn, model.StreamMessage{
 				Type:    "status",
 				Status:  "disconnected",
-				Symbols: symbols,
+				Symbols: validSymbols,
 			})
 			return
 		case <-ticker.C:
@@ -165,6 +162,23 @@ func (h *StockStreamHandler) Stream(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func (h *StockStreamHandler) filterValidSymbols(ctx context.Context, symbols []string) ([]string, []string) {
+	validSymbols := make([]string, 0, len(symbols))
+	skippedSymbols := make([]string, 0)
+
+	for _, symbol := range symbols {
+		if err := h.stockService.ValidateSymbol(ctx, symbol); err != nil {
+			log.Printf("websocket: skipping invalid symbol %s: %v", symbol, err)
+			skippedSymbols = append(skippedSymbols, symbol)
+			continue
+		}
+
+		validSymbols = append(validSymbols, symbol)
+	}
+
+	return validSymbols, skippedSymbols
 }
 
 func (h *StockStreamHandler) subscribeAll(symbols []string) ([]*finnhub.Subscription, <-chan finnhub.TradeUpdate, func(), error) {

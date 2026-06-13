@@ -1,9 +1,13 @@
-import { Injectable, NgZone, inject, signal } from '@angular/core';
+import { Injectable, NgZone, inject, isDevMode, signal } from '@angular/core';
 import { LivePriceState, StreamMessage, StreamStatus } from '../models/stock.model';
 import { AuthService } from './auth.service';
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
+
+function symbolsKey(symbols: string[]): string {
+  return [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))].sort().join(',');
+}
 
 @Injectable({ providedIn: 'root' })
 export class StockStreamService {
@@ -17,15 +21,19 @@ export class StockStreamService {
   readonly activeSymbols = signal<string[]>([]);
 
   private socket: WebSocket | null = null;
+  private activeKey = '';
+  private connectGeneration = 0;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
 
   connect(symbols: string[]): void {
     const normalized = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort();
+    const key = symbolsKey(normalized);
 
     if (normalized.length === 0) {
-      this.disconnect(false);
+      this.closeSocket();
+      this.activeKey = '';
       this.activeSymbols.set([]);
       this.status.set('idle');
       this.errorMessage.set(null);
@@ -33,34 +41,33 @@ export class StockStreamService {
       return;
     }
 
-    const current = [...this.activeSymbols()].sort();
-    if (this.socket && JSON.stringify(current) === JSON.stringify(normalized)) {
+    if (key === this.activeKey && this.isSocketActive()) {
       return;
     }
 
-    this.disconnect(false);
+    if (key === this.activeKey && this.reconnectTimer) {
+      return;
+    }
+
+    this.closeSocket();
     this.intentionalClose = false;
+    this.activeKey = key;
     this.activeSymbols.set(normalized);
     this.status.set('connecting');
     this.errorMessage.set(null);
     this.streamHint.set(null);
-    this.openSocket(normalized);
+
+    const generation = ++this.connectGeneration;
+    void this.startConnection(normalized, generation);
   }
 
   disconnect(userInitiated = true): void {
     this.intentionalClose = userInitiated;
+    this.connectGeneration += 1;
     this.clearReconnectTimer();
-
-    if (this.socket) {
-      this.socket.onopen = null;
-      this.socket.onmessage = null;
-      this.socket.onerror = null;
-      this.socket.onclose = null;
-      this.socket.close();
-      this.socket = null;
-    }
-
+    this.closeSocket();
     this.reconnectAttempts = 0;
+    this.activeKey = '';
 
     if (userInitiated) {
       this.status.set('idle');
@@ -71,11 +78,37 @@ export class StockStreamService {
     }
   }
 
-  private openSocket(symbols: string[]): void {
+  private async startConnection(symbols: string[], generation: number): Promise<void> {
+    try {
+      await this.authService.refreshAccessToken();
+    } catch {
+      if (generation !== this.connectGeneration) {
+        return;
+      }
+
+      this.zone.run(() => {
+        this.status.set('error');
+        this.errorMessage.set('Unable to refresh session for live prices.');
+      });
+      return;
+    }
+
+    if (generation !== this.connectGeneration || symbolsKey(symbols) !== this.activeKey) {
+      return;
+    }
+
+    this.openSocket(symbols, generation);
+  }
+
+  private openSocket(symbols: string[], generation: number): void {
     const url = this.buildWsUrl(symbols);
     this.socket = new WebSocket(url);
 
     this.socket.onopen = () => {
+      if (generation !== this.connectGeneration) {
+        return;
+      }
+
       this.zone.run(() => {
         this.reconnectAttempts = 0;
         this.status.set('connecting');
@@ -83,21 +116,31 @@ export class StockStreamService {
     };
 
     this.socket.onmessage = (event) => {
+      if (generation !== this.connectGeneration) {
+        return;
+      }
+
       this.zone.run(() => {
         this.handleMessage(event.data as string);
       });
     };
 
     this.socket.onerror = () => {
+      if (generation !== this.connectGeneration || this.intentionalClose) {
+        return;
+      }
+
       this.zone.run(() => {
-        if (!this.intentionalClose) {
-          this.status.set('error');
-          this.errorMessage.set('Live price connection failed.');
-        }
+        this.status.set('error');
+        this.errorMessage.set('Live price connection failed.');
       });
     };
 
     this.socket.onclose = () => {
+      if (generation !== this.connectGeneration) {
+        return;
+      }
+
       this.zone.run(() => {
         this.socket = null;
 
@@ -173,12 +216,36 @@ export class StockStreamService {
     this.reconnectAttempts += 1;
 
     const delay = RECONNECT_BASE_DELAY_MS * this.reconnectAttempts;
+    const generation = this.connectGeneration;
     this.clearReconnectTimer();
     this.reconnectTimer = setTimeout(() => {
-      if (this.activeSymbols().length > 0 && !this.intentionalClose) {
-        this.openSocket(symbols);
+      this.reconnectTimer = null;
+      if (this.activeSymbols().length === 0 || this.intentionalClose) {
+        return;
       }
+      void this.startConnection(symbols, generation);
     }, delay);
+  }
+
+  private isSocketActive(): boolean {
+    if (!this.socket) {
+      return false;
+    }
+
+    return this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING;
+  }
+
+  private closeSocket(): void {
+    if (!this.socket) {
+      return;
+    }
+
+    this.socket.onopen = null;
+    this.socket.onmessage = null;
+    this.socket.onerror = null;
+    this.socket.onclose = null;
+    this.socket.close();
+    this.socket = null;
   }
 
   private clearReconnectTimer(): void {
@@ -189,7 +256,6 @@ export class StockStreamService {
   }
 
   private buildWsUrl(symbols: string[]): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const params = new URLSearchParams({
       symbols: symbols.join(','),
     });
@@ -199,6 +265,11 @@ export class StockStreamService {
       params.set('access_token', accessToken);
     }
 
+    if (isDevMode()) {
+      return `ws://localhost:8080/ws/stocks?${params.toString()}`;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${window.location.host}/ws/stocks?${params.toString()}`;
   }
 }

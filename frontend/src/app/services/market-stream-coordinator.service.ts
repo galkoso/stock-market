@@ -4,6 +4,14 @@ import { PortfolioApiService } from './portfolio-api.service';
 import { StockStreamService } from './stock-stream.service';
 import { MAX_WATCHLIST_SIZE, WatchlistService } from './watchlist.service';
 
+function sameSymbolList(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((symbol, index) => symbol === right[index]);
+}
+
 @Injectable({ providedIn: 'root' })
 export class MarketStreamCoordinatorService {
   private readonly authService = inject(AuthService);
@@ -12,21 +20,25 @@ export class MarketStreamCoordinatorService {
   private readonly portfolioApi = inject(PortfolioApiService);
 
   private readonly active = signal(false);
+  private lastConnectedSymbols: string[] = [];
 
-  private readonly mergedSymbols = computed(() => {
-    const monitorSymbols = this.watchlistService.symbols();
-    const portfolioSymbols = this.portfolioApi.holdings().map((holding) => holding.symbol);
-    const seen = new Set<string>();
+  private readonly mergedSymbols = computed(
+    () => {
+      const monitorSymbols = this.watchlistService.symbols();
+      const portfolioSymbols = this.portfolioApi.holdings().map((holding) => holding.symbol);
+      const seen = new Set<string>();
 
-    for (const symbol of [...monitorSymbols, ...portfolioSymbols]) {
-      const normalized = symbol.trim().toUpperCase();
-      if (normalized) {
-        seen.add(normalized);
+      for (const symbol of [...monitorSymbols, ...portfolioSymbols]) {
+        const normalized = symbol.trim().toUpperCase();
+        if (normalized) {
+          seen.add(normalized);
+        }
       }
-    }
 
-    return [...seen].sort();
-  });
+      return [...seen].sort();
+    },
+    { equal: sameSymbolList },
+  );
 
   constructor() {
     effect(() => {
@@ -35,6 +47,12 @@ export class MarketStreamCoordinatorService {
       }
 
       const symbols = this.mergedSymbols();
+      if (sameSymbolList(symbols, this.lastConnectedSymbols)) {
+        return;
+      }
+
+      this.lastConnectedSymbols = symbols;
+
       if (symbols.length === 0) {
         this.stockStreamService.connect([]);
         return;
@@ -73,6 +91,7 @@ export class MarketStreamCoordinatorService {
 
   stop(): void {
     this.active.set(false);
+    this.lastConnectedSymbols = [];
     this.stockStreamService.disconnect();
   }
 }
