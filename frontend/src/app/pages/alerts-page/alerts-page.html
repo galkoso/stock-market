@@ -2,7 +2,7 @@
   <header class="page-header">
     <div>
       <h1>Alerts</h1>
-      <p>Get notified before earnings, price targets, filings, and unusual moves.</p>
+      <p>Get notified before earnings, price targets, filings, and on dates you choose.</p>
     </div>
     <span class="alert-count">{{ alerts().length }} active</span>
   </header>
@@ -25,7 +25,12 @@
 
         <label class="field">
           <span>Alert type</span>
-          <select [ngModel]="alertType()" (ngModelChange)="alertType.set($event)" name="alertType">
+          <select
+            [ngModel]="alertType()"
+            (ngModelChange)="onAlertTypeChange($event)"
+            name="alertType"
+          >
+            <option value="on_date">Scheduled update</option>
             <option value="earnings_days">Earnings reminder</option>
             <option value="price_above">Price above target</option>
             <option value="price_below">Price below target</option>
@@ -33,6 +38,34 @@
             <option value="unusual_move">Unusual price move</option>
           </select>
         </label>
+
+        @if (requiresNotifyDate(alertType())) {
+          <label class="field">
+            <span>Notification date</span>
+            <input
+              type="date"
+              class="date-input"
+              [ngModel]="notifyDate()"
+              (ngModelChange)="notifyDate.set($event)"
+              name="notifyDateRequired"
+            />
+            <span class="field-hint">You will receive an update on this date.</span>
+          </label>
+        }
+
+        @if (showOptionalNotifyDate(alertType())) {
+          <label class="field">
+            <span>Start notifications on <span class="optional">(optional)</span></span>
+            <input
+              type="date"
+              class="date-input"
+              [ngModel]="notifyDate()"
+              (ngModelChange)="notifyDate.set($event)"
+              name="notifyDateOptional"
+            />
+            <span class="field-hint">Leave empty to start immediately, or pick a future date.</span>
+          </label>
+        }
 
         @if (alertType() === 'earnings_days') {
           <label class="field">
@@ -112,7 +145,7 @@
         } @empty {
           <div class="empty-state">
             <p class="empty-title">No alerts yet</p>
-            <p class="muted">Create your first alert using the form. Try an earnings reminder for a stock in your watchlist.</p>
+            <p class="muted">Create your first alert using the form. Try a scheduled update for a stock in your watchlist.</p>
           </div>
         }
       </div>

@@ -7,12 +7,19 @@ import { AlertsApiService } from '../../services/alerts-api.service';
 import { StockService } from '../../services/stock.service';
 
 const ALERT_TYPE_LABELS: Record<string, string> = {
+  on_date: 'Scheduled update',
   earnings_days: 'Earnings reminder',
   price_above: 'Price above target',
   price_below: 'Price below target',
   new_filing: 'New SEC filing',
   unusual_move: 'Unusual price move',
 };
+
+function defaultNotifyDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
 
 @Component({
   selector: 'app-alerts-page',
@@ -32,6 +39,7 @@ export class AlertsPage implements OnInit, OnDestroy {
   protected readonly alertType = signal('earnings_days');
   protected readonly targetPrice = signal('');
   protected readonly earningsDays = signal('3');
+  protected readonly notifyDate = signal('');
   protected readonly errorMessage = signal<string | null>(null);
   protected readonly isSubmitting = signal(false);
 
@@ -77,6 +85,8 @@ export class AlertsPage implements OnInit, OnDestroy {
 
   protected alertTypeClass(type: string): string {
     switch (type) {
+      case 'on_date':
+        return 'scheduled';
       case 'earnings_days':
         return 'earnings';
       case 'price_above':
@@ -91,25 +101,54 @@ export class AlertsPage implements OnInit, OnDestroy {
     }
   }
 
+  protected requiresNotifyDate(type: string): boolean {
+    return type === 'on_date';
+  }
+
+  protected showOptionalNotifyDate(type: string): boolean {
+    return type !== 'on_date';
+  }
+
+  protected onAlertTypeChange(typeId: string): void {
+    this.alertType.set(typeId);
+    this.errorMessage.set(null);
+    if (typeId === 'on_date' && !this.notifyDate().trim()) {
+      this.notifyDate.set(defaultNotifyDate());
+    }
+  }
+
   protected alertDetail(alert: AlertRecord): string {
     const params = alert.params ?? {};
+    const notifyDate = formatNotifyDate(params['notifyDate']);
+
     switch (alert.alertType) {
+      case 'on_date':
+        return notifyDate
+          ? `Send update on ${notifyDate}`
+          : 'Scheduled update (date missing)';
       case 'earnings_days': {
         const days = params['days'];
-        return `Notify ${days ?? '?'} day(s) before earnings`;
+        const base = `Notify ${days ?? '?'} day(s) before earnings`;
+        return notifyDate ? `${base} · active from ${notifyDate}` : base;
       }
       case 'price_above': {
         const price = params['price'];
-        return `When price goes above $${formatParamNumber(price)}`;
+        const base = `When price goes above $${formatParamNumber(price)}`;
+        return notifyDate ? `${base} · active from ${notifyDate}` : base;
       }
       case 'price_below': {
         const price = params['price'];
-        return `When price drops below $${formatParamNumber(price)}`;
+        const base = `When price drops below $${formatParamNumber(price)}`;
+        return notifyDate ? `${base} · active from ${notifyDate}` : base;
       }
       case 'new_filing':
-        return 'When a new SEC filing is published';
+        return notifyDate
+          ? `When a new SEC filing is published · active from ${notifyDate}`
+          : 'When a new SEC filing is published';
       case 'unusual_move':
-        return 'When an unusual price move is detected';
+        return notifyDate
+          ? `When an unusual price move is detected · active from ${notifyDate}`
+          : 'When an unusual price move is detected';
       default:
         return alert.alertType;
     }
@@ -119,8 +158,16 @@ export class AlertsPage implements OnInit, OnDestroy {
     this.errorMessage.set(null);
     this.isSubmitting.set(true);
 
+    const type = this.alertType();
     const params: Record<string, unknown> = {};
-    if (this.alertType() === 'price_above' || this.alertType() === 'price_below') {
+
+    if (type === 'on_date' && !this.symbol().trim()) {
+      this.errorMessage.set('Enter a stock symbol.');
+      this.isSubmitting.set(false);
+      return;
+    }
+
+    if (type === 'price_above' || type === 'price_below') {
       const price = Number(this.targetPrice());
       if (!Number.isFinite(price) || price <= 0) {
         this.errorMessage.set('Enter a valid target price.');
@@ -129,7 +176,8 @@ export class AlertsPage implements OnInit, OnDestroy {
       }
       params['price'] = price;
     }
-    if (this.alertType() === 'earnings_days') {
+
+    if (type === 'earnings_days') {
       const days = Number(this.earningsDays());
       if (!Number.isFinite(days) || days < 1) {
         this.errorMessage.set('Enter at least 1 day before earnings.');
@@ -139,11 +187,29 @@ export class AlertsPage implements OnInit, OnDestroy {
       params['days'] = days;
     }
 
+    const dateValue = this.notifyDate().trim();
+    if (type === 'on_date') {
+      if (!isValidNotifyDate(dateValue)) {
+        this.errorMessage.set('Choose a valid notification date.');
+        this.isSubmitting.set(false);
+        return;
+      }
+      params['notifyDate'] = dateValue;
+    } else if (dateValue) {
+      if (!isValidNotifyDate(dateValue)) {
+        this.errorMessage.set('Choose a valid start date or leave it empty.');
+        this.isSubmitting.set(false);
+        return;
+      }
+      params['notifyDate'] = dateValue;
+    }
+
     try {
-      await this.alertsApi.create(this.symbol(), this.alertType(), params);
+      await this.alertsApi.create(this.symbol(), type, params);
       this.symbol.set('');
       this.targetPrice.set('');
       this.earningsDays.set('3');
+      this.notifyDate.set(this.alertType() === 'on_date' ? defaultNotifyDate() : '');
     } catch (error) {
       this.errorMessage.set(error instanceof Error ? error.message : 'Failed to create alert');
     } finally {
@@ -182,4 +248,28 @@ function formatParamNumber(value: unknown): string {
     return '—';
   }
   return num.toFixed(2);
+}
+
+function formatNotifyDate(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return null;
+  }
+  const parsed = new Date(`${raw}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return raw;
+  }
+  return parsed.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function isValidNotifyDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(parsed.getTime());
 }

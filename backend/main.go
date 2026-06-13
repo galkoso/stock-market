@@ -19,6 +19,7 @@ import (
 	"stock-market/backend/internal/scheduler"
 	"stock-market/backend/internal/service"
 	"stock-market/backend/internal/services"
+	"stock-market/backend/internal/telegram"
 
 	"github.com/gin-gonic/gin"
 )
@@ -75,13 +76,22 @@ func main() {
 	alertsService := services.NewAlertsService(alertsRepo)
 	notificationsService := services.NewNotificationsService(notificationsRepo)
 	notificationHub := notificationshub.NewHub()
-	alertEngine := services.NewAlertEngine(marketProvider, alertsRepo, notificationsRepo, notificationHub)
+	telegramNotifier := telegram.NewNotifier(telegram.Config{
+		BotToken: cfg.Telegram.BotToken,
+		ChatID:   cfg.Telegram.ChatID,
+	})
+	if telegramNotifier.Enabled() {
+		log.Println("telegram notifier enabled")
+	} else {
+		log.Println("telegram notifier disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable)")
+	}
+	alertEngine := services.NewAlertEngine(marketProvider, alertsRepo, notificationsRepo, notificationHub, telegramNotifier)
 
 	marketHandler := handler.NewMarketHandler(marketService, watchlistService)
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 	alertsHandler := handler.NewAlertsHandler(alertsService, alertEngine)
-	notificationsHandler := handler.NewNotificationsHandler(notificationsService, notificationHub)
+	notificationsHandler := handler.NewNotificationsHandler(notificationsService, notificationHub, telegramNotifier)
 
 	authService := auth.NewService(cfg.Auth, mongoDB.Users)
 	authHandler := auth.NewHandler(authService, cfg.Auth)
@@ -133,6 +143,7 @@ func main() {
 		api.GET("/notifications/stream", notificationsHandler.Stream)
 		api.POST("/notifications/:id/read", notificationsHandler.MarkRead)
 		api.POST("/notifications/read-all", notificationsHandler.MarkAllRead)
+		api.POST("/notifications/telegram/test", notificationsHandler.TestTelegram)
 	}
 
 	router.GET("/ws/stocks", authMiddleware, streamHandler.Stream)

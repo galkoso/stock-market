@@ -22,7 +22,17 @@ type Config struct {
 	FinnhubAPIKey string
 	MongoURI      string
 	RedisURL      string
+	Telegram      TelegramConfig
 	Auth          auth.Config
+}
+
+type TelegramConfig struct {
+	BotToken string
+	ChatID   string
+}
+
+func (c TelegramConfig) Enabled() bool {
+	return c.BotToken != "" && c.ChatID != ""
 }
 
 func Load() (*Config, error) {
@@ -78,6 +88,10 @@ func Load() (*Config, error) {
 		FinnhubAPIKey: apiKey,
 		MongoURI:      mongoURI,
 		RedisURL:      redisURL,
+		Telegram: TelegramConfig{
+			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+			ChatID:   os.Getenv("TELEGRAM_CHAT_ID"),
+		},
 		Auth: auth.Config{
 			RefreshTokenCookie:           refreshCookie,
 			AccessJWTSecret:              accessSecret,
